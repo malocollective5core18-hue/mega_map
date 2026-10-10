@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- Public Leaflet assets are pinned to version 1.9.4 and loaded with Subresource Integrity verification.
+
 Changes are recorded here for release and deployment reviews.
 
 ## Unreleased — release audit documentation
