@@ -461,13 +461,16 @@ def navigation_links(location):
         return None
     lat_text, lng_text = f"{lat:.6f}", f"{lng:.6f}"
     pair = f"{lat_text},{lng_text}"
-    google = f"https://www.google.com/maps/dir/?api=1&destination={quote(pair, safe=',')}&travelmode=driving"
+    google_driving = f"https://www.google.com/maps/dir/?api=1&destination={quote(pair, safe=',')}&travelmode=driving"
+    google_walking = f"https://www.google.com/maps/dir/?api=1&destination={quote(pair, safe=',')}&travelmode=walking"
     return {
-        "googleMaps": google,
+        "googleMaps": google_driving,
+        "googleMapsDriving": google_driving,
+        "googleMapsWalking": google_walking,
         "waze": f"https://waze.com/ul?ll={quote(pair, safe=',')}&navigate=yes",
         "appleMaps": f"https://maps.apple.com/?daddr={quote(pair, safe=',')}",
         "openStreetMap": f"https://www.openstreetmap.org/?mlat={lat_text}&mlon={lng_text}#map=19/{lat_text}/{lng_text}",
-        "whatsappShare": f"https://wa.me/?text={quote(google, safe='')}",
+        "whatsappShare": f"https://wa.me/?text={quote(google_driving, safe='')}",
     }
 
 
