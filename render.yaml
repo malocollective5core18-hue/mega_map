@@ -10,6 +10,8 @@ services:
     healthCheckPath: /api/public/config
     autoDeploy: true
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.14.4"
       - key: DJANGO_SETTINGS_MODULE
         value: stocktaking.settings.prod
       - key: DJANGO_SECRET_KEY
