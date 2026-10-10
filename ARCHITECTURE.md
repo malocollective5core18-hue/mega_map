@@ -10,4 +10,4 @@ Staff use `/staff/` with Django session authentication and a separate interface.
 
 ## Current boundaries
 
-The staff dashboard currently covers sign-in, searchable/paged business listing, satellite pins, customer detail, status/assignee/notes updates, pin correction, admin CSV export, recent audit events, searchable provider-code issuance history, and public-listing consent control. Code revocation/reporting, bulk listing controls, aggregate reports, team-specific access/sharing, and staff MFA still need completion. Render deployment configuration is in `render.yaml` and `build.sh`; see `DEPLOY.md` for setup and current free-tier limits.
+The staff dashboard currently covers sign-in, searchable/paged business listing, satellite pins, customer detail, status/assignee/notes updates, pin correction, admin CSV export, recent audit events, searchable provider-code history with revoke, and public-listing consent control. Bulk listing controls, aggregate reports, team-specific access/sharing, and staff MFA still need completion. Render deployment configuration is in `render.yaml` and `build.sh`; see `DEPLOY.md` for setup and current free-tier limits.

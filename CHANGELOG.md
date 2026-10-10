@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Duplicate submissions are serialized by PostgreSQL transaction locks; customer phone changes rebind active keys and duplicate edits are rejected pending the owner data gate for DB uniqueness.
+- Render Blueprint watches `production`; failed key attempts can be pruned by a daily management command.
+- Runtime pins and Python version are declared, and customer key history uses indexed phone HMACs (secret rotation requires a rehash plan).
 - Public Leaflet assets are pinned to version 1.9.4 and loaded with Subresource Integrity verification.
 - Staff audit coverage now records failed sign-in, denied authorization, staff-user listing, new-customer key verification, and changed field names without storing submitted values.
 - Django `/admin/` is restricted to superusers; a report-only CSP header is available for compatibility observation. MFA is still a release blocker.

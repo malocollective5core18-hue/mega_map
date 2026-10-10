@@ -17,7 +17,7 @@ All routes below are under `/api`; requests and responses are JSON unless the ro
 
 ## Staff
 
-- `GET /auth/csrf` obtains a CSRF token; `POST /auth/login` accepts username/password and `POST /auth/logout` ends the session. Sessions expire after 30 minutes.
+- `GET /auth/csrf` obtains a CSRF token; `POST /auth/login` accepts email/password and `POST /auth/logout` ends the session. Sessions expire after 30 minutes. MFA is not implemented and remains a production release blocker.
 - `GET /admin/businesses?status=&q=&bbox=&page=` returns up to 50 customer records per page, including the latest phone-bound service-code state as `accountAccess`. `GET /admin/businesses/{uuid}` returns audited exact contact/location data and server-built navigation links.
 - `PATCH /admin/businesses/{uuid}` accepts `customerName`, `businessName`, normalized `phone`, status, notes, active staff assignee, admin-only `publicListing`, and paired `correctedLatitude`/`correctedLongitude`. A phone already assigned to another business is rejected with HTTP 422 (`phone_in_use`). Changes and pin corrections are audited.
 - `POST /admin/businesses/{uuid}/visits` accepts `visitDate`, `team`, and `outcome`.
