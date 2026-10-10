@@ -602,6 +602,7 @@ class StaffPermissionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["items"][0]["customerName"], self.business.customer_name)
         self.assertEqual(response.data["items"][0]["phone"], self.business.phone)
+        self.assertTrue(AuditLog.objects.filter(action="provider_code.list_viewed", actor=admin).exists())
 
     def test_phone_hash_updates_when_customer_phone_changes(self):
         self.business.phone = "+255712345670"
