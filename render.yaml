@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: mauzosheet-mega-map
+    runtime: python
+    region: singapore
+    plan: free
+    branch: main
+    buildCommand: ./build.sh
+    startCommand: gunicorn stocktaking.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
+    healthCheckPath: /api/public/config
+    autoDeploy: true
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: stocktaking.settings.prod
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: mauzosheet-mega-map.onrender.com
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://mauzosheet-mega-map.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_SSL_REQUIRE
+        value: "true"
+      - key: DB_CONN_MAX_AGE
+        value: "60"
+      - key: PRIVACY_NOTICE_VERSION
+        value: "2026-10"

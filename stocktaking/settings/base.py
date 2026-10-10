@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+import dj_database_url
+
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
@@ -27,6 +29,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "core.middleware.PrivateStaffNoStoreMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -48,7 +51,14 @@ TEMPLATES = [{
     ]},
 }]
 
-DATABASES = {"default": {
+if os.environ.get("DATABASE_URL"):
+    DATABASES = {"default": dj_database_url.parse(
+        os.environ["DATABASE_URL"],
+        conn_max_age=int(os.environ.get("DB_CONN_MAX_AGE", "60")),
+        ssl_require=os.environ.get("DB_SSL_REQUIRE", "true").lower() == "true",
+    )}
+else:
+    DATABASES = {"default": {
     "ENGINE": "django.db.backends.postgresql",
     "NAME": os.environ.get("POSTGRES_DB", "stocktaking"),
     "USER": os.environ.get("POSTGRES_USER", "stocktaking"),
@@ -57,7 +67,7 @@ DATABASES = {"default": {
     "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     "CONN_MAX_AGE": int(os.environ.get("POSTGRES_CONN_MAX_AGE", "60")),
     "OPTIONS": {"connect_timeout": 5},
-}}
+    }}
 
 CACHES = {"default": {
     "BACKEND": "django.core.cache.backends.db.DatabaseCache",
@@ -78,6 +88,10 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SESSION_COOKIE_HTTPONLY = True
