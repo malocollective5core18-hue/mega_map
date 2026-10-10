@@ -358,16 +358,18 @@ def auth_login(request):
     csrf_failure = CsrfViewMiddleware(lambda req: HttpResponse()).process_view(raw_request, lambda req: None, (), {})
     if csrf_failure is not None:
         return error("csrf_failed", "Refresh the sign-in page and try again.", status.HTTP_403_FORBIDDEN)
-    raw_username = request.data.get("username", "")
+    raw_email = request.data.get("email", "")
     password = request.data.get("password", "")
-    if not isinstance(raw_username, str) or not isinstance(password, str):
-        return error("invalid_credentials", "Username or password is incorrect.", status.HTTP_401_UNAUTHORIZED)
-    username = raw_username.strip()
-    user = authenticate(request=raw_request, username=username, password=password)
+    if not isinstance(raw_email, str) or not isinstance(password, str):
+        return error("invalid_credentials", "Email or password is incorrect.", status.HTTP_401_UNAUTHORIZED)
+    email = raw_email.strip()
+    matching_users = get_user_model().objects.filter(email__iexact=email).order_by("pk")[:2] if email else []
+    matches = list(matching_users)
+    user = authenticate(request=raw_request, username=matches[0].get_username(), password=password) if len(matches) == 1 else None
     if user is None or not user.is_active or not (
         has_role(user, "dispatcher") or has_role(user, "admin") or user.groups.filter(name="service_provider").exists()
     ):
-        return error("invalid_credentials", "Username or password is incorrect.", status.HTTP_401_UNAUTHORIZED)
+        return error("invalid_credentials", "Email or password is incorrect.", status.HTTP_401_UNAUTHORIZED)
     login(raw_request, user)
     record_audit(request=request, actor=user, action="auth.login", object_type="User", object_id=user.pk)
     if user.is_superuser:
@@ -420,6 +422,8 @@ def admin_staff_users(request):
         raise
     if User.objects.filter(**{User.USERNAME_FIELD: username}).exists():
         return error("username_exists", "That username is already in use.", status.HTTP_409_CONFLICT)
+    if User.objects.filter(email__iexact=email).exists():
+        return error("email_exists", "That email address is already assigned to a staff account.", status.HTTP_409_CONFLICT)
     from django.contrib.auth.models import Group
     try:
         with transaction.atomic():
