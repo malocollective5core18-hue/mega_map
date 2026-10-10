@@ -69,6 +69,7 @@ class CustomerBusiness(models.Model):
     customer_name = models.CharField(max_length=160)
     business_name = models.CharField(max_length=200)
     phone = models.CharField(max_length=20, db_index=True)
+    phone_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.SUBMITTED, db_index=True)
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="assigned_businesses")
     notes = models.TextField(blank=True)
@@ -78,6 +79,15 @@ class CustomerBusiness(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["status", "created_at"])]
+
+    def save(self, *args, **kwargs):
+        from .security import hash_value
+
+        self.phone_hash = hash_value("provider-phone:" + self.phone)
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"phone_hash"}
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.public_ref} — {self.business_name}"

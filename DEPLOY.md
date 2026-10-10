@@ -56,3 +56,5 @@ For local use, continue with `.env.example` and `docker compose up -d db`; the e
 Before any future migration that adds a unique constraint to customer phones, run `python manage.py check_duplicate_customer_phones` against a protected, representative database copy. This read-only command exits with an error and lists only masked last-four identifiers when duplicates exist. Stop the migration process and resolve the records before proceeding. No phone uniqueness migration is included until this data gate has been satisfied.
 
 Schedule `python manage.py prune_code_attempts --hours 24` to run daily. It deletes old failed-key attempt digests in bounded batches; the verification path also removes at most 200 stale rows opportunistically on approximately one percent of attempts.
+
+Customer-business phone digests are HMACs keyed by `DJANGO_SECRET_KEY`, matching provider-code phone digests for indexed code-history lookup. Changing that secret invalidates provider-code verification as well as these indexes; secret rotation requires a controlled migration that rehashes both data sets atomically. Do not rotate the key without a planned rehash/recovery procedure.

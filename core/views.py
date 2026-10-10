@@ -814,12 +814,14 @@ def admin_provider_codes(request):
         target_hashes = {code.target_phone_hash for code in page_codes}
         linked_customers = {}
         if target_hashes:
-            for business in CustomerBusiness.objects.only("phone", "customer_name", "business_name").order_by("-created_at").iterator():
+            # Match provider-key digests against indexed customer phone digests.
+            linked_rows = CustomerBusiness.objects.filter(phone_hash__in=target_hashes).only(
+                "phone_hash", "customer_name", "business_name", "phone"
+            ).order_by("-created_at")
+            for business in linked_rows:
                 phone_hash = hash_value("provider-phone:" + business.phone)
                 if phone_hash in target_hashes and phone_hash not in linked_customers:
                     linked_customers[phone_hash] = business
-                if len(linked_customers) == len(target_hashes):
-                    break
         items = []
         for code in page_codes:
             if code.status == ProviderCode.Status.REVOKED:

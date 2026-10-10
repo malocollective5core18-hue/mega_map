@@ -306,6 +306,30 @@ class StaffPermissionTests(TestCase):
         self.assertEqual(old_login.data, {"valid": False})
         self.assertTrue(new_login.data["valid"])
 
+    def test_customer_phone_hash_is_index_value_and_code_history_links_without_phone_scan(self):
+        self.assertEqual(self.business.phone_hash, hash_value("provider-phone:" + self.business.phone))
+        raw_key = "INDEXED-HISTORY-KEY"
+        ProviderCode.objects.create(
+            code_hash=hash_value(raw_key),
+            target_phone_hash=self.business.phone_hash,
+            target_phone_last4=self.business.phone[-4:],
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        admin = get_user_model().objects.create_superuser(
+            username="index-admin", email="index-admin@example.test", password="safe-test-password"
+        )
+        self.client.force_authenticate(user=admin)
+        response = self.client.get("/api/admin/provider-codes")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["items"][0]["customerName"], self.business.customer_name)
+        self.assertEqual(response.data["items"][0]["phone"], self.business.phone)
+
+    def test_phone_hash_updates_when_customer_phone_changes(self):
+        self.business.phone = "+255712345670"
+        self.business.save(update_fields=["phone"])
+        self.business.refresh_from_db()
+        self.assertEqual(self.business.phone_hash, hash_value("provider-phone:" + self.business.phone))
+
     def test_staff_phone_change_rejects_phone_used_by_another_business(self):
         other = CustomerBusiness.objects.create(
             public_ref="BU-OTHERPHONE",

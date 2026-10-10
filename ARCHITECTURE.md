@@ -1,8 +1,8 @@
 # Architecture
 
-The customer map is served from `index.html` by Django. The vanilla JavaScript calls same-origin Django REST Framework endpoints under `/api/`. Leaflet is pinned to 1.9.4 and public imagery uses Esri World Imagery.
+The customer map is served from `index.html` by Django. The vanilla JavaScript calls same-origin Django REST Framework endpoints under `/api/`. Leaflet 1.9.4 public and staff assets are pinned with Subresource Integrity. Public imagery uses Esri World Imagery.
 
-`core` owns provider codes, single-use verification sessions, customer submissions, consent records, service visits, demand cells and immutable audit events. PostgreSQL is the application database. Coordinates are indexed decimal latitude/longitude fields; duplicate detection uses a bounding query followed by haversine distance. Public map APIs only query served, opted-in businesses and round coordinates to 0.001 degrees. Demand cells are only returned once they aggregate at least three requests.
+`core` owns provider codes, single-use verification sessions, customer submissions, consent records, service visits, demand cells and audit events. PostgreSQL is the application database. Customer phone HMACs are indexed for code-history linking; values depend on `SECRET_KEY`, so rotation requires a controlled rehash migration. Coordinates are indexed decimal latitude/longitude fields; duplicate detection uses sorted PostgreSQL transaction advisory locks and a bounding query followed by haversine distance. Public map APIs only query served, opted-in businesses and round coordinates to 0.001 degrees. Demand cells are only returned once they aggregate at least three requests.
 
 Staff use `/staff/` with Django session authentication and a separate interface. API permissions distinguish dispatcher and admin groups. Exact-data detail views, list views, edits, corrections and exports create audit records. Navigation URLs are composed server-side from validated coordinates only; a verified team correction becomes the navigation destination.
 
