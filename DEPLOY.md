@@ -27,16 +27,18 @@ Render runs `build.sh` on each build and uses the service command in the Bluepri
 
 ## 3. Create the first administrator
 
-Do not add credentials to the repository or blueprint. On a trusted computer, make a private local environment file containing the Render `DJANGO_SECRET_KEY`, exact host/origin values, and the Supabase session-pooler `DATABASE_URL`. Keep it outside the repository and delete it when finished. Install the project requirements locally and run:
+Do not add credentials to the repository or blueprint. Do not put a superuser password in permanent Render environment variables, and do not upload `.env`; Render does not read your local `.env` file. Create the superuser once against the production database from a trusted computer. Make a private environment file outside the repository containing the Render `DJANGO_SECRET_KEY`, exact host/origin values, and the Supabase session-pooler `DATABASE_URL`. Keep it private and delete it when finished. Install the project requirements locally and run:
 
 ```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 set -a
 . /secure/path/mauzosheet-production.env
 set +a
-DJANGO_SETTINGS_MODULE=stocktaking.settings.prod python manage.py createsuperuser
+DJANGO_SETTINGS_MODULE=stocktaking.settings.prod .venv/bin/python manage.py createsuperuser
 ```
 
-The build creates `admin` and `dispatcher` role groups. Sign in at `/staff/` with the administrator account and create named staff accounts with strong unique passwords. Do not share a superuser account.
+The build creates `admin`, `dispatcher`, and `service_provider` role groups. Sign in at `/staff/` with this superuser account. Use its sidebar to register admin assistants and service providers. Admin assistants cannot create staff or issue customer keys; service providers can issue reusable phone-bound customer keys. Do not share the superuser account. Rotate any password that has been pasted into chat or exposed elsewhere before creating the production account.
 
 ## 4. Before serving live customers
 

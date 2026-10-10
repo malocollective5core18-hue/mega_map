@@ -7,7 +7,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import quote
 
 from django.conf import settings
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.password_validation import validate_password
 from django.db import IntegrityError, transaction
 from django.db.models import F, Q
 from django.http import HttpResponse
@@ -150,7 +151,22 @@ def verify_code(request):
     if token is None:
         return Response({"valid": False})
     session = VerificationSession.objects.get(token_hash=hashlib.sha256(token.encode()).hexdigest())
-    return Response({"valid": True, "verificationToken": token, "expiresAt": session.expires_at.isoformat()})
+    result = {"valid": True, "verificationToken": token, "expiresAt": session.expires_at.isoformat()}
+    if session.provider_code.reusable:
+        customer = CustomerBusiness.objects.select_related("location", "consent").filter(phone=phone).order_by("-created_at").first()
+        if customer is not None:
+            result["existingCustomer"] = {
+                "reference": customer.public_ref,
+                "customerName": customer.customer_name,
+                "businessName": customer.business_name,
+                "phone": customer.phone,
+                "latitude": float(customer.location.navigation_latitude),
+                "longitude": float(customer.location.navigation_longitude),
+                "accuracyMeters": float(customer.location.accuracy_m) if customer.location.accuracy_m is not None else None,
+                "publicListing": customer.consent.public_listing,
+            }
+            record_audit(request=request, actor=None, action="customer.key_login", object_type="CustomerBusiness", object_id=customer.pk)
+    return Response(result)
 
 
 def bearer_token(request):
@@ -206,8 +222,92 @@ def submit_location(request):
             body = {"accepted": True, "reference": business.public_ref}
             session.used_at = timezone.now()
             session.save(update_fields=["used_at"])
-            IdempotencyRecord.objects.create(key_hash=key_hash, session=session, business=business, response_body=body)
+            IdempotencyRecord.objects.create(
+                key_hash=key_hash, session=session, business=business,
+                response_status=status.HTTP_201_CREATED, response_body=body,
+            )
             return Response(body, status=status.HTTP_201_CREATED)
+    except IntegrityError:
+        prior = IdempotencyRecord.objects.filter(key_hash=key_hash).first()
+        if prior and prior.session_id == getattr(locals().get("session"), "pk", None):
+            return Response(prior.response_body, status=prior.response_status)
+        return error("idempotency_conflict", "This request key has already been used.", status.HTTP_409_CONFLICT)
+
+
+@api_view(["PUT"])
+@permission_classes([AllowAny])
+@authentication_classes([])
+@throttle_classes([SubmissionThrottle])
+def update_customer_profile(request):
+    serializer = LocationSubmissionSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({"error": {
+            "code": "invalid_submission",
+            "message": "Check the submitted details, consent, and location confirmation.",
+            "details": serializer.errors,
+        }}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+    token = bearer_token(request)
+    if not token:
+        return error("customer_login_required", "Sign in with your phone and customer key, then try again.", status.HTTP_401_UNAUTHORIZED)
+    idempotency_key = request.headers.get("Idempotency-Key", "").strip()
+    if not 16 <= len(idempotency_key) <= 128:
+        return error("idempotency_key_required", "Send a valid Idempotency-Key with this update.", status.HTTP_400_BAD_REQUEST)
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    key_hash = hash_value(idempotency_key)
+    try:
+        with transaction.atomic():
+            session = VerificationSession.objects.select_for_update().select_related("provider_code").filter(token_hash=token_hash).first()
+            if session is None:
+                return error("verification_expired", "Your customer login expired. Sign in again with your key.", status.HTTP_410_GONE)
+            prior = IdempotencyRecord.objects.filter(key_hash=key_hash).first()
+            if prior:
+                if prior.session_id != session.pk:
+                    return error("idempotency_conflict", "This request key has already been used.", status.HTTP_409_CONFLICT)
+                return Response(prior.response_body, status=prior.response_status)
+            if session.expires_at <= timezone.now() or session.used_at is not None:
+                return error("verification_expired", "Your customer login expired. Sign in again with your key.", status.HTTP_410_GONE)
+            if not session.provider_code.reusable:
+                return error("customer_login_required", "This code is for one-time registration. Sign in with a reusable customer key to update your account.", status.HTTP_403_FORBIDDEN)
+            data = serializer.validated_data
+            expected_phone_hash = session.provider_code.target_phone_hash
+            if not expected_phone_hash or not hmac.compare_digest(expected_phone_hash, hash_value("provider-phone:" + data["phone"])):
+                return error("phone_code_mismatch", "Use the phone number associated with your customer key.", status.HTTP_422_UNPROCESSABLE_ENTITY)
+            business = CustomerBusiness.objects.select_related("location", "consent").filter(phone=data["phone"]).order_by("-created_at").first()
+            if business is None:
+                return error("customer_not_found", "No registered customer account was found for this phone. Use Register to submit your business details first.", status.HTTP_404_NOT_FOUND)
+
+            business.customer_name = data["customerName"]
+            business.business_name = data["businessName"]
+            business.location.latitude = data["latitude"]
+            business.location.longitude = data["longitude"]
+            business.location.accuracy_m = data.get("accuracyMeters")
+            business.location.source = BusinessLocation.Source.GPS if data.get("accuracyMeters") is not None else BusinessLocation.Source.MANUAL
+            business.location.captured_at = timezone.now()
+            business.location.corrected_lat = None
+            business.location.corrected_lng = None
+            business.location.corrected_by = None
+            business.location.corrected_at = None
+            business.location.team_verified = False
+            business.consent.public_listing = data["publicListing"]
+            business.consent.privacy_notice_version = settings.PRIVACY_NOTICE_VERSION
+            business.consent.given_at = timezone.now()
+            business.consent.ip_hash = hash_value(request.META.get("REMOTE_ADDR", ""))
+            business.location.save(update_fields=[
+                "latitude", "longitude", "accuracy_m", "source", "captured_at",
+                "corrected_lat", "corrected_lng", "corrected_by", "corrected_at", "team_verified",
+            ])
+            business.consent.save(update_fields=["public_listing", "privacy_notice_version", "given_at", "ip_hash"])
+            business.save(update_fields=["customer_name", "business_name", "updated_at"])
+            session.used_at = timezone.now()
+            session.save(update_fields=["used_at"])
+            body = {"updated": True, "reference": business.public_ref}
+            IdempotencyRecord.objects.create(
+                key_hash=key_hash, session=session, business=business,
+                response_status=status.HTTP_200_OK, response_body=body,
+            )
+            record_audit(request=request, actor=None, action="customer.profile_updated", object_type="CustomerBusiness", object_id=business.pk)
+            return Response(body)
     except IntegrityError:
         prior = IdempotencyRecord.objects.filter(key_hash=key_hash).first()
         if prior and prior.session_id == getattr(locals().get("session"), "pk", None):
@@ -227,6 +327,20 @@ def staff_required(request, *, admin=False):
         return error("not_allowed", "This action is limited to administrators.", status.HTTP_403_FORBIDDEN)
     if not role and not (has_role(request.user, "dispatcher") or has_role(request.user, "admin")):
         return error("not_allowed", "This action is limited to staff.", status.HTTP_403_FORBIDDEN)
+    return None
+
+
+def service_provider_or_superuser(user):
+    return user.is_superuser or user.groups.filter(name="service_provider").exists()
+
+
+def admin_or_superuser(user):
+    return user.is_superuser or user.groups.filter(name="admin").exists()
+
+
+def superuser_required(request):
+    if not request.user.is_superuser:
+        return error("not_allowed", "Only the superuser can manage staff accounts.", status.HTTP_403_FORBIDDEN)
     return None
 
 
@@ -250,11 +364,72 @@ def auth_login(request):
         return error("invalid_credentials", "Username or password is incorrect.", status.HTTP_401_UNAUTHORIZED)
     username = raw_username.strip()
     user = authenticate(request=raw_request, username=username, password=password)
-    if user is None or not user.is_active or not (has_role(user, "dispatcher") or has_role(user, "admin")):
+    if user is None or not user.is_active or not (
+        has_role(user, "dispatcher") or has_role(user, "admin") or user.groups.filter(name="service_provider").exists()
+    ):
         return error("invalid_credentials", "Username or password is incorrect.", status.HTTP_401_UNAUTHORIZED)
     login(raw_request, user)
     record_audit(request=request, actor=user, action="auth.login", object_type="User", object_id=user.pk)
-    return Response({"authenticated": True, "role": "admin" if has_role(user, "admin") else "dispatcher"})
+    if user.is_superuser:
+        role = "superuser"
+    elif user.groups.filter(name="admin").exists():
+        role = "admin"
+    elif user.groups.filter(name="service_provider").exists():
+        role = "service_provider"
+    else:
+        role = "dispatcher"
+    return Response({"authenticated": True, "role": role})
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def admin_staff_users(request):
+    denied = superuser_required(request)
+    if denied:
+        return denied
+
+    User = get_user_model()
+    if request.method == "GET":
+        users = User.objects.filter(groups__name__in=["admin", "service_provider"]).distinct().order_by("username")
+        return Response({"items": [{
+            "id": user.pk,
+            "username": user.get_username(),
+            "email": user.email,
+            "role": "service_provider" if user.groups.filter(name="service_provider").exists() else "admin",
+            "active": user.is_active,
+            "createdAt": user.date_joined.isoformat(),
+        } for user in users]})
+
+    username = request.data.get("username", "")
+    email = request.data.get("email", "")
+    password = request.data.get("password", "")
+    role = request.data.get("role", "")
+    if not all(isinstance(value, str) for value in (username, email, password, role)):
+        return error("invalid_staff_user", "Enter a username, email, password, and role.", status.HTTP_400_BAD_REQUEST)
+    username, email, role = username.strip(), email.strip(), role.strip()
+    if not username or len(username) > 150 or not email or len(email) > 254 or not password or role not in ("admin", "service_provider"):
+        return error("invalid_staff_user", "Enter a valid username, email, password, and allowed staff role.", status.HTTP_400_BAD_REQUEST)
+    try:
+        User._meta.get_field(User.USERNAME_FIELD).clean(username, None)
+        User._meta.get_field("email").clean(email, None)
+        validate_password(password)
+    except Exception as exc:
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        if isinstance(exc, DjangoValidationError):
+            return error("invalid_staff_user", " ".join(exc.messages), status.HTTP_400_BAD_REQUEST)
+        raise
+    if User.objects.filter(**{User.USERNAME_FIELD: username}).exists():
+        return error("username_exists", "That username is already in use.", status.HTTP_409_CONFLICT)
+    from django.contrib.auth.models import Group
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(**{User.USERNAME_FIELD: username, "email": email, "password": password})
+            group, _ = Group.objects.get_or_create(name=role)
+            user.groups.add(group)
+            record_audit(request=request, actor=request.user, action="staff.user_created", object_type="User", object_id=user.pk)
+    except IntegrityError:
+        return error("username_exists", "That username is already in use.", status.HTTP_409_CONFLICT)
+    return Response({"id": user.pk, "username": user.get_username(), "email": user.email, "role": role}, status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
@@ -309,7 +484,9 @@ def location_confidence(location):
 
 def phone_access(phone):
     codes = ProviderCode.objects.filter(target_phone_hash=hash_value("provider-phone:" + phone))
-    code = codes.filter(status=ProviderCode.Status.ACTIVE, expires_at__gt=timezone.now(), use_count__lt=F("max_uses")).order_by("-created_at").first()
+    code = codes.filter(status=ProviderCode.Status.ACTIVE, expires_at__gt=timezone.now()).filter(
+        Q(reusable=True) | Q(use_count__lt=F("max_uses"))
+    ).order_by("-created_at").first()
     if code is not None:
         return {"status": "active", "expiresAt": code.expires_at.isoformat()}
     code = codes.order_by("-created_at").first()
@@ -319,7 +496,7 @@ def phone_access(phone):
         state = "revoked"
     elif code.expires_at <= timezone.now():
         state = "expired"
-    elif code.use_count >= code.max_uses:
+    elif not code.reusable and code.use_count >= code.max_uses:
         state = "used"
     else:
         state = "active"
@@ -531,26 +708,36 @@ def admin_export(request):
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def admin_provider_codes(request):
-    denied = staff_required(request, admin=True)
-    if denied:
-        return denied
+    if not admin_or_superuser(request.user) and not request.user.groups.filter(name="service_provider").exists():
+        return error("not_allowed", "Provider-code access is limited to administrators and service providers.", status.HTTP_403_FORBIDDEN)
+    is_provider = not request.user.is_superuser and request.user.groups.filter(name="service_provider").exists()
+    if request.method == "POST" and not service_provider_or_superuser(request.user):
+        return error("not_allowed", "Only the superuser and service providers can generate customer keys.", status.HTTP_403_FORBIDDEN)
     if request.method == "GET":
         codes = ProviderCode.objects.all()
+        if is_provider:
+            codes = codes.filter(created_by=request.user)
         query = request.query_params.get("q", "").strip()[:120]
         status_filter = request.query_params.get("status", "").strip()
         now = timezone.now()
         if status_filter == "active":
-            codes = codes.filter(status=ProviderCode.Status.ACTIVE, expires_at__gt=now, use_count__lt=F("max_uses"))
+            codes = codes.filter(status=ProviderCode.Status.ACTIVE, expires_at__gt=now).filter(Q(reusable=True) | Q(use_count__lt=F("max_uses")))
         elif status_filter == "expired":
             codes = codes.filter(Q(status=ProviderCode.Status.EXPIRED) | Q(status=ProviderCode.Status.ACTIVE, expires_at__lte=now))
         elif status_filter == "used":
-            codes = codes.filter(status=ProviderCode.Status.ACTIVE, expires_at__gt=now, use_count__gte=F("max_uses"))
+            codes = codes.filter(status=ProviderCode.Status.ACTIVE, reusable=False, expires_at__gt=now, use_count__gte=F("max_uses"))
         elif status_filter == "revoked":
             codes = codes.filter(status=ProviderCode.Status.REVOKED)
         elif status_filter:
             return error("invalid_status", "Unknown provider code status.", status.HTTP_400_BAD_REQUEST)
 
-        if query:
+        if query and is_provider:
+            digits_query = "".join(char for char in query if char.isdigit())
+            search_filter = Q(label__icontains=query)
+            if len(digits_query) >= 4:
+                search_filter |= Q(target_phone_last4=digits_query[-4:])
+            codes = codes.filter(search_filter)
+        elif query:
             matching_businesses = CustomerBusiness.objects.filter(
                 Q(customer_name__icontains=query) | Q(business_name__icontains=query) | Q(phone__icontains=query)
             ).values_list("phone", flat=True)
@@ -590,15 +777,16 @@ def admin_provider_codes(request):
                 code_status = "revoked"
             elif code.status == ProviderCode.Status.EXPIRED or code.expires_at <= now:
                 code_status = "expired"
-            elif code.use_count >= code.max_uses:
+            elif not code.reusable and code.use_count >= code.max_uses:
                 code_status = "used"
             else:
                 code_status = "active"
-            customer = linked_customers.get(code.target_phone_hash)
+            customer = linked_customers.get(code.target_phone_hash) if not is_provider else None
             items.append({
                 "id": code.pk, "label": code.label, "status": code_status,
                 "expiresAt": code.expires_at.isoformat(), "createdAt": code.created_at.isoformat(),
                 "maxUses": code.max_uses, "useCount": code.use_count,
+                "reusable": code.reusable,
                 "customerName": customer.customer_name if customer else None,
                 "businessName": customer.business_name if customer else None,
                 "phone": customer.phone if customer else ("•••• " + code.target_phone_last4 if code.target_phone_last4 else None),
@@ -612,26 +800,27 @@ def admin_provider_codes(request):
     except ValidationError:
         phone = ""
     label = request.data.get("label", "")
-    try:
-        max_uses = int(request.data.get("maxUses", 1))
-    except (TypeError, ValueError):
-        max_uses = 0
-    if not phone or expires_at is None or timezone.is_naive(expires_at) or expires_at <= timezone.now() or not 1 <= max_uses <= 10000 or not isinstance(label, str) or len(label) > 120:
-        return error("invalid_provider_code", "Provide a valid customer phone, a future timezone-aware expiry, a label up to 120 characters, and 1–10,000 uses.", status.HTTP_400_BAD_REQUEST)
-    code, raw_code = issue_provider_code(target_phone=phone, expires_at=expires_at, max_uses=max_uses, label=label, created_by=request.user)
+    if not phone or expires_at is None or timezone.is_naive(expires_at) or expires_at <= timezone.now() or not isinstance(label, str) or len(label) > 120:
+        return error("invalid_provider_code", "Provide a valid customer phone, a future timezone-aware expiry, and a label up to 120 characters.", status.HTTP_400_BAD_REQUEST)
+    code, raw_code = issue_provider_code(target_phone=phone, expires_at=expires_at, max_uses=1, label=label, created_by=request.user, reusable=True)
     record_audit(request=request, actor=request.user, action="provider_code.created", object_type="ProviderCode", object_id=code.pk)
-    return Response({"id": code.pk, "code": raw_code, "phone": phone, "expiresAt": code.expires_at.isoformat(), "maxUses": code.max_uses}, status=status.HTTP_201_CREATED)
+    return Response({"id": code.pk, "code": raw_code, "phone": phone, "expiresAt": code.expires_at.isoformat(), "reusable": True}, status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def admin_revoke_code(request, code_id):
-    denied = staff_required(request, admin=True)
-    if denied:
-        return denied
+    is_owner_provider = (
+        request.user.groups.filter(name="service_provider").exists()
+        and not request.user.is_superuser
+    )
+    if not admin_or_superuser(request.user) and not is_owner_provider:
+        return error("not_allowed", "Only an administrator or service provider can revoke a customer key.", status.HTTP_403_FORBIDDEN)
     code = ProviderCode.objects.filter(pk=code_id).first()
     if code is None:
         return error("not_found", "Provider code not found.", status.HTTP_404_NOT_FOUND)
+    if is_owner_provider and code.created_by_id != request.user.pk:
+        return error("not_allowed", "Service providers can revoke only keys they created.", status.HTTP_403_FORBIDDEN)
     if code.status != ProviderCode.Status.REVOKED:
         code.status = ProviderCode.Status.REVOKED
         code.revoked_at = timezone.now()

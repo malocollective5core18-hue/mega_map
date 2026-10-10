@@ -11,8 +11,9 @@ All routes below are under `/api`; requests and responses are JSON unless the ro
 
 ## Customer submission
 
-- `POST /provider-codes/verify` with `{ "phone": "0712345678", "code": "..." }` returns a short-lived bearer verification token only when both match. Phone is normalized and compared against the keyed hash bound to the code; invalid pairs return the same response.
-- `POST /location-submissions` uses `Authorization: Bearer <token>` and an `Idempotency-Key` header (16–128 characters). Payload fields: `customerName`, `businessName`, `phone`, `latitude`, `longitude`, optional `accuracyMeters`, `consent:true`, `confirmed:true`, and `publicListing:boolean`. Success returns `201 {accepted,reference}`. Duplicate phone/pin returns `409`; expired or used verification returns `410`; invalid submission returns `422`.
+- `POST /provider-codes/verify` with `{ "phone": "0712345678", "code": "..." }` returns a short-lived bearer session only when both match. Newly issued keys are phone-bound and reusable until expiry or revocation. If the phone already has a submitted business, the response also includes its editable profile and saved location as `existingCustomer`. Invalid pairs return the same `{valid:false}` response.
+- `POST /location-submissions` registers a new customer using `Authorization: Bearer <token>` and an `Idempotency-Key` header (16–128 characters). Payload fields: `customerName`, `businessName`, `phone`, `latitude`, `longitude`, optional `accuracyMeters`, `consent:true`, `confirmed:true`, and `publicListing:boolean`. Success returns `201 {accepted,reference}`.
+- `PUT /customer/profile` uses the same bearer session and payload to update the matching registered phone's details, location, and public-listing consent. Success returns `200 {updated,reference}`. Update retries with the same idempotency key return the original result. Expired or used verification sessions return `410`; invalid submission returns `422`.
 
 ## Staff
 
@@ -20,6 +21,8 @@ All routes below are under `/api`; requests and responses are JSON unless the ro
 - `GET /admin/businesses?status=&q=&bbox=&page=` returns up to 50 customer records per page, including the latest phone-bound service-code state as `accountAccess`. `GET /admin/businesses/{uuid}` returns audited exact contact/location data and server-built navigation links.
 - `PATCH /admin/businesses/{uuid}` accepts `customerName`, `businessName`, normalized `phone`, status, notes, active staff assignee, admin-only `publicListing`, and paired `correctedLatitude`/`correctedLongitude`. Changes and pin corrections are audited.
 - `POST /admin/businesses/{uuid}/visits` accepts `visitDate`, `team`, and `outcome`.
-- Admin only: `GET /admin/export.csv`, `POST /admin/provider-codes` with customer `phone`, `label`, `expiresAt`, and `maxUses` (returns a random code once), `GET /admin/provider-codes?q=&status=&page=` for the searchable, filtered issued-code list (never returns the code), `POST /admin/provider-codes/{id}/revoke`, `GET /admin/audit-log`.
+- Superuser only: `GET/POST /admin/staff-users` lists staff accounts or creates an `admin` assistant or `service_provider`; other roles cannot create staff accounts.
+- Superuser and service providers: `POST /admin/provider-codes` with customer `phone`, `label`, and `expiresAt` returns a reusable random key once. Admin assistants may view/filter the key history but cannot issue keys. `GET /admin/provider-codes?q=&status=&page=` never returns key secrets; providers see only keys they issued and masked phone details. Providers may revoke their own keys; admins and the superuser may revoke any key.
+- Admin assistants and superuser: `GET /admin/export.csv`, `GET /admin/audit-log`.
 
 Google Maps, Waze, Apple Maps, OpenStreetMap and WhatsApp URLs in staff detail contain coordinate destinations only, generated server-side at six decimals. No business name or phone is included.

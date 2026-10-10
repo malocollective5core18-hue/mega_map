@@ -6,6 +6,6 @@ class Command(BaseCommand):
     help = "Create the standard staff role groups required by the dashboard."
 
     def handle(self, *args, **options):
-        for name in ("dispatcher", "admin"):
+        for name in ("dispatcher", "admin", "service_provider"):
             Group.objects.get_or_create(name=name)
             self.stdout.write(f"Ensured role group: {name}")

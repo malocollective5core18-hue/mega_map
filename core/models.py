@@ -19,6 +19,7 @@ class ProviderCode(models.Model):
     expires_at = models.DateTimeField()
     max_uses = models.PositiveIntegerField(default=1)
     use_count = models.PositiveIntegerField(default=0)
+    reusable = models.BooleanField(default=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="issued_provider_codes")
     created_at = models.DateTimeField(auto_now_add=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
@@ -31,7 +32,7 @@ class ProviderCode(models.Model):
         return (
             self.status == self.Status.ACTIVE
             and self.expires_at > timezone.now()
-            and self.use_count < self.max_uses
+            and (self.reusable or self.use_count < self.max_uses)
         )
 
     def __str__(self):
