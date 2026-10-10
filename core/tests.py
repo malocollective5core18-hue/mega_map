@@ -427,6 +427,55 @@ class StaffPermissionTests(TestCase):
         self.assertIn("/admin/provider-codes/${button.dataset.revokeCode}/revoke", source)
         self.assertIn("window.confirm('Revoke this customer key?", source)
 
+    def test_key_generation_prevents_native_submit_and_renders_before_history_refresh(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "templates" / "staff" / "dashboard.html").read_text()
+        start = source.index("form.addEventListener('submit'")
+        handler = source[start:source.index("</script>", start)]
+        self.assertIn("event.preventDefault()", handler)
+        self.assertLess(handler.index("result.hidden = false"), handler.index("provider-codes-updated"))
+        self.assertNotIn("location.reload", handler)
+
+    def test_staff_endpoint_role_matrix_for_directory_export_codes_and_audit(self):
+        User = get_user_model()
+        roles = {}
+        for username, role in (("matrix-dispatch", "dispatcher"), ("matrix-admin", "admin"),
+                               ("matrix-provider", "service_provider")):
+            user = User.objects.create_user(username=username, password="safe-test-password")
+            group, _ = Group.objects.get_or_create(name=role)
+            user.groups.add(group)
+            roles[role] = user
+        assistant = roles["admin"]
+        own_code = ProviderCode.objects.create(
+            code_hash=hash_value("MATRIX-OWN-CODE"), target_phone_hash=hash_value("provider-phone:" + self.business.phone),
+            expires_at=timezone.now() + timedelta(hours=1), created_by=roles["service_provider"],
+        )
+        root = User.objects.create_superuser(username="matrix-root", email="matrix-root@example.test", password="safe-test-password")
+
+        def status(user, method, path):
+            client = APIClient()
+            if user is not None:
+                client.force_authenticate(user=user)
+            return getattr(client, method)(path).status_code
+
+        anonymous = None
+        self.assertIn(status(anonymous, "get", "/api/admin/businesses"), (401, 403))
+        for role in ("dispatcher", "admin"):
+            self.assertEqual(status(roles[role], "get", "/api/admin/businesses"), 200)
+            self.assertEqual(status(roles[role], "get", f"/api/admin/businesses/{self.business.pk}"), 200)
+        self.assertEqual(status(roles["service_provider"], "get", "/api/admin/businesses"), 403)
+        self.assertEqual(status(assistant, "get", "/api/admin/staff-users"), 403)
+        self.assertEqual(status(root, "get", "/api/admin/staff-users"), 200)
+        self.assertEqual(status(roles["dispatcher"], "get", "/api/admin/export.csv"), 403)
+        self.assertEqual(status(assistant, "get", "/api/admin/export.csv"), 200)
+        self.assertEqual(status(roles["dispatcher"], "get", "/api/admin/provider-codes"), 403)
+        self.assertEqual(status(assistant, "get", "/api/admin/provider-codes"), 200)
+        self.assertEqual(status(roles["service_provider"], "get", "/api/admin/provider-codes"), 200)
+        self.assertEqual(status(roles["dispatcher"], "get", "/api/admin/audit-log"), 403)
+        self.assertEqual(status(assistant, "get", "/api/admin/audit-log"), 200)
+        self.assertEqual(status(roles["service_provider"], "post", f"/api/admin/provider-codes/{own_code.pk}/revoke"), 200)
+
     def test_superuser_can_create_staff_assistant(self):
         root = get_user_model().objects.create_superuser(
             username="staff-creator", email="staff-creator@example.test", password="safe-test-password"
