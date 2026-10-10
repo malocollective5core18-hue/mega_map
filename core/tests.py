@@ -16,8 +16,8 @@ from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import AuditLog, BusinessLocation, Consent, CustomerBusiness, DemandCell, ProviderCode, VerificationSession
-from .security import hash_value
+from .models import AuditLog, BusinessLocation, CodeAttempt, Consent, CustomerBusiness, DemandCell, ProviderCode, VerificationSession
+from .security import code_attempts_throttled, hash_value
 from .services import find_duplicate as real_find_duplicate
 
 
@@ -68,6 +68,30 @@ class DuplicatePhoneCheckTests(TestCase):
         self.assertIn("•••• 0001: 2 records", output.getvalue())
         self.assertNotIn("+255700000001", output.getvalue())
         self.assertEqual(CustomerBusiness.objects.filter(phone="+255700000001").count(), 2)
+
+
+class CodeAttemptRetentionTests(TestCase):
+    def test_prune_command_removes_old_rows_and_keeps_recent_rows(self):
+        now = timezone.now()
+        stale = CodeAttempt.objects.create(code_hash="a" * 64)
+        recent = CodeAttempt.objects.create(code_hash="b" * 64)
+        CodeAttempt.objects.filter(pk=stale.pk).update(created_at=now - timedelta(hours=25))
+        output = StringIO()
+
+        call_command("prune_code_attempts", stdout=output)
+
+        self.assertFalse(CodeAttempt.objects.filter(pk=stale.pk).exists())
+        self.assertTrue(CodeAttempt.objects.filter(pk=recent.pk).exists())
+        self.assertIn("1", output.getvalue())
+
+    def test_throttle_path_opportunistically_prunes_bounded_old_rows(self):
+        stale = CodeAttempt.objects.create(code_hash="c" * 64)
+        CodeAttempt.objects.filter(pk=stale.pk).update(created_at=timezone.now() - timedelta(hours=25))
+
+        with patch("core.security.secrets.randbelow", return_value=0):
+            self.assertFalse(code_attempts_throttled("SOME-OTHER-CODE"))
+
+        self.assertFalse(CodeAttempt.objects.filter(pk=stale.pk).exists())
 
 
 class DeploymentConfigurationTests(TestCase):

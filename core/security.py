@@ -69,5 +69,14 @@ def verify_provider_code(raw_code, target_phone, *, request=None):
 
 
 def code_attempts_throttled(raw_code):
+    now = timezone.now()
+    if secrets.randbelow(100) == 0:
+        stale_ids = list(
+            CodeAttempt.objects.filter(created_at__lt=now - timedelta(hours=24))
+            .order_by("created_at")
+            .values_list("pk", flat=True)[:200]
+        )
+        if stale_ids:
+            CodeAttempt.objects.filter(pk__in=stale_ids).delete()
     digest = hash_value("".join(raw_code.split()).upper())
-    return CodeAttempt.objects.filter(code_hash=digest, created_at__gte=timezone.now() - timedelta(hours=1)).count() >= 5
+    return CodeAttempt.objects.filter(code_hash=digest, created_at__gte=now - timedelta(hours=1)).count() >= 5
