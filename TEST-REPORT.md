@@ -4,6 +4,14 @@
 
 Date: 10 October 2026. Branch: `fix/audit-defects`. No production database or service was contacted.
 
+### Mission 5 environment gate / Task 1
+
+- Network prerequisite: `getent ahosts pypi.org` and `getent ahosts github.com` returned no addresses. No package installs or external action/version verification were attempted.
+- PostgreSQL prerequisite: `pg_isready` reported no response; Docker is not installed. Per Mission 5, work stopped after CI Task 1.
+- Added `.github/workflows/ci.yml` for PostgreSQL 16 checks, migrations, tests/coverage, package audit, Ruff, full-history Gitleaks, frontend JavaScript syntax, and a fail-closed Playwright job.
+- CI workflow syntax is locally parse-checked; the workflow itself has not run in GitHub Actions. The Playwright job currently fails closed because `playwright.config.ts` and `package-lock.json` do not exist. Those belong to the browser task, which was not started under the environment gate.
+- Branch protection instructions were added to `RELEASE/CHECKLIST.md`. GitHub repository settings were not changed.
+
 - Runtime: Python 3.14.4; Django 5.2.18; DRF 3.16.1. Runtime dependencies are pinned in `requirements.lock`, and Render's `PYTHON_VERSION` is set in `render.yaml`.
 - `DJANGO_SETTINGS_MODULE=stocktaking.settings.test python manage.py check`: Pass.
 - `DJANGO_SETTINGS_MODULE=stocktaking.settings.test python manage.py makemigrations --check --dry-run`: Pass; no changes detected.

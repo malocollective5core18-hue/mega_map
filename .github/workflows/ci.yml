@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  postgresql:
+    name: PostgreSQL 16 / Django tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mauzosheet
+          POSTGRES_USER: mauzosheet
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mauzosheet -d mauzosheet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DJANGO_SECRET_KEY: ci-only-not-a-production-secret-0123456789-abcdefghijklmnopqrstuvwxyz
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      CSRF_TRUSTED_ORIGINS: http://localhost:8000
+      DATABASE_URL: postgres://mauzosheet:ci-only-password@127.0.0.1:5432/mauzosheet
+      DB_SSL_REQUIRE: "false"
+      DJANGO_SETTINGS_MODULE: stocktaking.settings.ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.4"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install pinned application dependencies
+        run: python -m pip install -r requirements.lock
+      - name: Django system check
+        run: python manage.py check
+      - name: Production deployment check
+        env:
+          DJANGO_SETTINGS_MODULE: stocktaking.settings.prod
+        run: python manage.py check --deploy
+      - name: Check migration files
+        run: python manage.py makemigrations --check --dry-run
+      - name: Migrate empty PostgreSQL database
+        run: python manage.py migrate --noinput
+      - name: Run PostgreSQL test suite with coverage
+        run: |
+          python -m pip install coverage
+          coverage run --branch --source=core manage.py test
+          coverage report
+          coverage xml
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  security-and-style:
+    name: Dependency audit and Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.4"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install pinned application dependencies
+        run: python -m pip install -r requirements.lock
+      - name: Audit pinned dependencies
+        uses: pypa/gh-action-pip-audit@v1.1.0
+        with:
+          inputs: requirements.lock
+      - name: Ruff
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: check .
+
+  secret-scan:
+    name: Full-history secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  frontend:
+    name: Frontend syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check inline frontend JavaScript
+        run: python3 scripts/check_frontend_js.py
+
+  playwright:
+    name: Playwright browser suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Require committed Playwright test suite
+        run: |
+          if [ ! -f playwright.config.ts ] || [ ! -f package-lock.json ]; then
+            echo "Playwright configuration and package-lock.json are required; complete the browser-test task before this gate can pass."
+            exit 1
+          fi
+      - name: Install browser-test dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run browser tests
+        run: npx playwright test
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore

@@ -41,3 +41,7 @@ Use this for each candidate. Attach command output or CI links to `READINESS.md`
 - [ ] Owner must record the approved Supabase data region, backup schedule/retention, restore evidence/date, incident commander and contact path, and customer/security notification owner. These operational facts cannot be verified or created from this repository.
 - [ ] Record every gate as Pass, Fail, or Not tested in `READINESS.md` for the release SHA.
 - [ ] Obtain PR approval, merge to protected `production`, tag the approved commit, and have the owner deploy it.
+
+## GitHub branch protection for `production`
+
+After the workflow has run once so GitHub registers its checks, open **Settings → Rules → Rulesets** (or the repository's branch protection settings), target `production`, and require pull requests before merge. Require these status checks from the `CI` workflow: **PostgreSQL 16 / Django tests**, **Dependency audit and Ruff**, **Full-history secret scan**, **Frontend syntax**, and **Playwright browser suite**. Require the branch to be up to date if that is the repository policy, dismiss stale approvals after new commits, and prevent force pushes/deletion. The Playwright check intentionally fails until the config, lockfile, and browser suite from the browser-test task are added; do not make it optional to obtain a green result.
