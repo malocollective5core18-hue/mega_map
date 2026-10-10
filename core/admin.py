@@ -3,6 +3,14 @@ from django.contrib import admin
 from .models import AuditLog, ProviderCode, VerificationSession
 
 
+class SuperuserOnlyAdminSite(admin.AdminSite):
+    def has_permission(self, request):
+        return request.user.is_active and request.user.is_staff and request.user.is_superuser
+
+
+admin.site.__class__ = SuperuserOnlyAdminSite
+
+
 @admin.register(ProviderCode)
 class ProviderCodeAdmin(admin.ModelAdmin):
     list_display = ("id", "label", "status", "expires_at", "use_count", "max_uses", "created_by")

@@ -17,6 +17,8 @@ Use this for each candidate. Attach command output or CI links to `READINESS.md`
 - [ ] Verify static collection and serving via WhiteNoise or the approved equivalent.
 - [ ] Verify production logs omit customer names, phone numbers, code secrets, and exact coordinates.
 - [ ] Verify CSP, CSRF/session behavior, rate limits, output escaping, security headers, and all staff authorization checks.
+- [ ] Enforce TOTP MFA for every staff role, prove wrong-code lockout and single-use recovery codes, and document who owns enrollment and account recovery. Current repository does not implement MFA.
+- [ ] Confirm `/admin/` is superuser-only. Django admin access also remains blocked for ordinary staff until MFA is enforced.
 
 ## Database and application tests
 
@@ -36,5 +38,6 @@ Use this for each candidate. Attach command output or CI links to `READINESS.md`
 - [ ] Test keyboard use, screen reader labels, responsive tables, and panel resizing on representative devices.
 - [ ] Review `DEPLOY.md`, `CHANGELOG.md`, `RELEASE/ROLLBACK.md`, known limitations, and owner/legal decisions.
 - [ ] Demonstrate a production-grade Supabase backup and restore; verify HTTPS domain, MFA, privacy approval, retention, incident response, and support ownership.
+- [ ] Owner must record the approved Supabase data region, backup schedule/retention, restore evidence/date, incident commander and contact path, and customer/security notification owner. These operational facts cannot be verified or created from this repository.
 - [ ] Record every gate as Pass, Fail, or Not tested in `READINESS.md` for the release SHA.
 - [ ] Obtain PR approval, merge to protected `production`, tag the approved commit, and have the owner deploy it.

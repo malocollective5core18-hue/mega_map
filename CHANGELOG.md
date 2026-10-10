@@ -3,6 +3,8 @@
 ## Unreleased
 - Public Leaflet assets are pinned to version 1.9.4 and loaded with Subresource Integrity verification.
 - Staff audit coverage now records failed sign-in, denied authorization, staff-user listing, new-customer key verification, and changed field names without storing submitted values.
+- Django `/admin/` is restricted to superusers; a report-only CSP header is available for compatibility observation. MFA is still a release blocker.
+- Issued customer-key history now has a confirmed Revoke action.
 
 Changes are recorded here for release and deployment reviews.
 

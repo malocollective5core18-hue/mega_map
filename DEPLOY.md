@@ -43,7 +43,7 @@ The build creates `admin`, `dispatcher`, and `service_provider` role groups. Sig
 ## 4. Before serving live customers
 
 - Move off Render and Supabase free tiers for live operations; configure Supabase automated backups and perform a restore drill.
-- Add MFA or an identity provider for staff access. Django's current username/password staff sign-in does not enforce MFA by itself.
+- Staff MFA is a release blocker: current sign-in does not enforce TOTP or recovery codes. Do not use this deployment for routine real customer records until an approved, maintained MFA flow is implemented and tested.
 - Set `COMPANY_PHONE_NUMBER` and `COMPANY_WHATSAPP_NUMBER` in Render if those actions should work.
 - Review the privacy notice and data handling for Tanzania, including hosting customer names, phone numbers, and exact locations in Singapore. Confirm legal and owner approval before collecting real customer records.
 - Confirm map tile/geocoding service terms, retention/deletion procedures, monitoring and incident response. Logs should not include customer details.

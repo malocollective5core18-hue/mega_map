@@ -1,7 +1,7 @@
 # Release Readiness
 
 **Status: NOT PRODUCTION-READY. No release branch or tag was created.**
-**Audited commit:** `26f328cd9201cc2d1765de9510eaa67dfec0b16d` (`main` = `origin/main`)
+**Audited commit:** Task branch `fix/audit-defects`; see `FIX-REPORT.md` for commit-by-commit evidence. This readiness document is updated for the task branch, not a production deployment.
 **Working-tree caveat:** the SRS currently open in the IDE is an untracked file and is not included in this commit.
 
 Statuses mean: **Pass** = verified with recorded evidence for this audit; **Fail** = gate is unmet or command failed; **Not tested** = no valid evidence was available. “Fail” includes a blocked check; it does not necessarily mean application behavior is defective.
@@ -20,10 +20,10 @@ Statuses mean: **Pass** = verified with recorded evidence for this audit; **Fail
 | Representative-data migration/rollback | Not tested | No database copy or rollback drill was available; no live database was touched. |
 | Full suite on PostgreSQL | Not tested | Test run could not load settings because dependencies are incomplete. Existing `TEST-REPORT.md` reports 7 tests previously run on SQLite, which does not meet this gate. |
 | Public API privacy behavior | Not tested in this audit | Seven existing tests are documented in `TEST-REPORT.md`, but no test run was possible here and PostgreSQL suite evidence is absent. |
-| Backend permission/security review | Fail | Existing role checks and throttles are present, but full endpoint-by-endpoint tests, MFA, CSP, and complete sensitive-action audit coverage are not verified. MFA is absent per `DEPLOY.md` and `TEST-REPORT.md`. |
+| Backend permission/security review | Fail | Source tests now cover selected role paths and sensitive audit events. Full endpoint-by-endpoint role matrix and MFA are not complete. CSP is report-only and browser behavior is not verified. |
 | Secret scan | Pass with limitation | Targeted history scan found only test fixture passwords; no real credential found. Gitleaks/trufflehog not installed, so CI/trusted-host full scan remains necessary. |
 | Frontend JavaScript syntax | Pass | `node --check` passed for public and staff-login scripts. Staff dashboard passed after replacing its Django template boolean with a rendered boolean. |
-| CDN integrity | Fail | Leaflet in the public page lacks SRI; staff Leaflet is pinned with SRI. Other remote geocoding/map services rely on third-party availability/terms. |
+| CDN integrity | Partial | Public and staff Leaflet 1.9.4 assets include SRI in source. Browser network loading was not verified. Other remote geocoding/map services rely on third-party availability/terms. |
 | Browser/real-device/map failure checks | Not tested | No browser console run, tile-blocked fallback check, GPS hardware check, Android/iPhone navigation, or accessibility session was performed. |
 | Static build/WhiteNoise production check | Not tested | `collectstatic` could not be run under production settings because dependencies are incomplete. |
 | Docs and operational recovery | Fail | No changelog/rollback plan previously existed; documents are being added here, but backup/restore, retention, MFA, HTTPS domain, and privacy approval are still unproven/open. |
