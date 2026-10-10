@@ -104,6 +104,13 @@ class DeploymentConfigurationTests(TestCase):
         self.assertIsNotNone(branch)
         self.assertEqual(branch.group(1), "production")
 
+    def test_csp_is_report_only_and_contains_expected_external_sources(self):
+        response = APIClient().get("/")
+        policy = response.headers.get("Content-Security-Policy-Report-Only", "")
+        self.assertIn("https://unpkg.com", policy)
+        self.assertIn("https://photon.komoot.io", policy)
+        self.assertNotIn("Content-Security-Policy", response.headers)
+
 
 class AccuracyLanguageTests(TestCase):
     def test_customer_copy_does_not_promise_guaranteed_gps_accuracy(self):
@@ -131,7 +138,7 @@ class PublicAssetIntegrityTests(TestCase):
 
 
 class CustomerFlowTests(TestCase):
-    def test_valid_code_submission_is_idempotent_and_single_use(self):
+    def test_legacy_nonreusable_key_submission_is_idempotent_and_single_use(self):
         code = "ABCD2345EFGH6789"
         ProviderCode.objects.create(code_hash=hash_value(code), target_phone_hash=hash_value("provider-phone:+255712345678"), expires_at=timezone.now() + timedelta(hours=1), max_uses=1)
         client = APIClient()
@@ -184,6 +191,57 @@ class CustomerFlowTests(TestCase):
         event = AuditLog.objects.get(action="auth.login_failed")
         self.assertEqual(event.metadata, {"reason": "credentials_or_role"})
         self.assertNotIn("never-log-this", str(event.metadata))
+
+    def test_reusable_key_repeats_until_expiry_or_revocation(self):
+        phone, raw = "+255712345672", "REUSABLE-LIFECYCLE"
+        code = ProviderCode.objects.create(
+            code_hash=hash_value(raw), target_phone_hash=hash_value("provider-phone:" + phone),
+            reusable=True, expires_at=timezone.now() + timedelta(hours=1),
+        )
+        client = APIClient()
+        self.assertTrue(client.post("/api/provider-codes/verify", {"phone": phone, "code": raw}, format="json").data["valid"])
+        self.assertTrue(client.post("/api/provider-codes/verify", {"phone": phone, "code": raw}, format="json").data["valid"])
+        code.status = ProviderCode.Status.REVOKED
+        code.save(update_fields=["status"])
+        self.assertEqual(client.post("/api/provider-codes/verify", {"phone": phone, "code": raw}, format="json").data, {"valid": False})
+
+    def test_expired_key_is_rejected(self):
+        phone, raw = "+255712345673", "EXPIRED-LIFECYCLE"
+        ProviderCode.objects.create(
+            code_hash=hash_value(raw), target_phone_hash=hash_value("provider-phone:" + phone),
+            reusable=True, expires_at=timezone.now() - timedelta(seconds=1),
+        )
+        response = APIClient().post("/api/provider-codes/verify", {"phone": phone, "code": raw}, format="json")
+        self.assertEqual(response.data, {"valid": False})
+
+    def test_customer_can_update_profile_with_reusable_key(self):
+        phone, raw = "+255712345678", "PROFILE-UPDATE-KEY"
+        code = ProviderCode.objects.create(
+            code_hash=hash_value(raw), target_phone_hash=hash_value("provider-phone:" + phone),
+            reusable=True, expires_at=timezone.now() + timedelta(hours=1),
+        )
+        business = CustomerBusiness.objects.create(
+            public_ref="BU-PROFILE-UPDATE", customer_name="Before Name", business_name="Before Shop", phone=phone,
+        )
+        BusinessLocation.objects.create(business=business, latitude=Decimal("-6.8"), longitude=Decimal("39.2"))
+        Consent.objects.create(business=business, privacy_notice_version="test", location_processing=True)
+        client = APIClient()
+        verify = client.post("/api/provider-codes/verify", {"phone": phone, "code": raw}, format="json")
+        self.assertTrue(verify.data["valid"])
+        response = client.put(
+            "/api/customer/profile",
+            {"customerName": "After Name", "businessName": "After Shop", "phone": phone,
+             "latitude": -6.81, "longitude": 39.21, "accuracyMeters": 30,
+             "consent": True, "confirmed": True, "publicListing": False},
+            format="json", HTTP_AUTHORIZATION="Bearer " + verify.data["verificationToken"],
+            HTTP_IDEMPOTENCY_KEY="profile-update-regression-001",
+        )
+        self.assertEqual(response.status_code, 200)
+        business.refresh_from_db()
+        self.assertEqual(business.customer_name, "After Name")
+        self.assertEqual(business.location.latitude, Decimal("-6.810000"))
+        event = AuditLog.objects.get(action="customer.profile_updated", object_id=str(business.pk))
+        self.assertEqual(set(event.metadata["changed_fields"]), {"customer_name", "business_name", "location", "public_listing"})
 
 
 @skipUnless(connection.vendor == "postgresql", "Advisory-lock concurrency regression requires PostgreSQL")
@@ -275,6 +333,19 @@ class StaffPermissionTests(TestCase):
         self.client.force_login(user)
         self.assertContains(self.client.get("/staff/"), "Dispatch")
 
+    def test_django_admin_requires_superuser_even_for_other_staff(self):
+        staff_user = get_user_model().objects.create_user(
+            username="nonroot-admin", email="nonroot@example.test", password="safe-test-password", is_staff=True
+        )
+        staff_user.groups.add(Group.objects.get_or_create(name="admin")[0])
+        self.client.force_login(staff_user)
+        self.assertEqual(self.client.get("/admin/").status_code, 302)
+        root = get_user_model().objects.create_superuser(
+            username="root-site", email="root-site@example.test", password="safe-test-password"
+        )
+        self.client.force_login(root)
+        self.assertEqual(self.client.get("/admin/").status_code, 200)
+
     def test_pin_correction_is_audited_and_used_for_navigation(self):
         group, _ = Group.objects.get_or_create(name="dispatcher")
         user = get_user_model().objects.create_user(username="dispatch2", password="safe-test-password")
@@ -295,6 +366,130 @@ class StaffPermissionTests(TestCase):
         self.client.force_authenticate(user=user)
         self.assertEqual(self.client.get("/api/admin/staff-users").status_code, 200)
         self.assertTrue(AuditLog.objects.filter(action="staff.users_listed", actor=user).exists())
+
+    def test_staff_phone_hash_updates_when_customer_phone_changes(self):
+        self.business.phone = "+255712345670"
+        self.business.save(update_fields=["phone"])
+        self.business.refresh_from_db()
+        self.assertEqual(self.business.phone_hash, hash_value("provider-phone:" + self.business.phone))
+
+    def test_provider_key_history_is_limited_to_issuer(self):
+        ProviderCode.objects.create(
+            code_hash=hash_value("OWNED-CODE-123456"),
+            target_phone_hash=hash_value("provider-phone:" + self.business.phone),
+            target_phone_last4=self.business.phone[-4:],
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        provider_group, _ = Group.objects.get_or_create(name="service_provider")
+        provider = get_user_model().objects.create_user(username="limited-provider", password="safe-test-password")
+        provider.groups.add(provider_group)
+        self.client.force_authenticate(user=provider)
+        response = self.client.get("/api/admin/provider-codes")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+
+    def test_superuser_can_issue_reusable_customer_key(self):
+        root = get_user_model().objects.create_superuser(
+            username="key-issuer-root", email="key-issuer@example.test", password="safe-test-password"
+        )
+        self.client.force_authenticate(user=root)
+        response = self.client.post("/api/admin/provider-codes", {
+            "phone": "0712345678", "label": "Regression account",
+            "expiresAt": (timezone.now() + timedelta(days=1)).isoformat(),
+        }, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["reusable"])
+        self.assertTrue(ProviderCode.objects.get(pk=response.data["id"]).reusable)
+
+    def test_provider_cannot_revoke_another_providers_key(self):
+        provider_group, _ = Group.objects.get_or_create(name="service_provider")
+        owner = get_user_model().objects.create_user(username="key-owner", password="safe-test-password")
+        owner.groups.add(provider_group)
+        other = get_user_model().objects.create_user(username="key-outsider", password="safe-test-password")
+        other.groups.add(provider_group)
+        code = ProviderCode.objects.create(
+            code_hash=hash_value("OTHER-OWNER-CODE"),
+            target_phone_hash=hash_value("provider-phone:" + self.business.phone),
+            expires_at=timezone.now() + timedelta(hours=1), created_by=owner,
+        )
+        self.client.force_authenticate(user=other)
+        response = self.client.post(f"/api/admin/provider-codes/{code.pk}/revoke")
+        self.assertEqual(response.status_code, 403)
+        code.refresh_from_db()
+        self.assertEqual(code.status, ProviderCode.Status.ACTIVE)
+        self.assertTrue(AuditLog.objects.filter(action="auth.authorization_denied", object_type="ProviderCode").exists())
+
+    def test_dashboard_code_history_has_confirmed_revoke_action(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "templates" / "staff" / "dashboard.html").read_text()
+        self.assertIn("data-revoke-code", source)
+        self.assertIn("/admin/provider-codes/${button.dataset.revokeCode}/revoke", source)
+        self.assertIn("window.confirm('Revoke this customer key?", source)
+
+    def test_superuser_can_create_staff_assistant(self):
+        root = get_user_model().objects.create_superuser(
+            username="staff-creator", email="staff-creator@example.test", password="safe-test-password"
+        )
+        self.client.force_authenticate(user=root)
+        response = self.client.post("/api/admin/staff-users", {
+            "username": "new-assistant", "email": "assistant@example.test",
+            "password": "a-safe-temp-password-553!", "role": "admin",
+        }, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(get_user_model().objects.get(username="new-assistant").groups.filter(name="admin").exists())
+
+    def test_csv_export_escapes_formula_leading_values(self):
+        self.business.customer_name = "=HYPERLINK(\"https://bad.example\")"
+        self.business.save(update_fields=["customer_name"])
+        root = get_user_model().objects.create_superuser(
+            username="csv-root", email="csv-root@example.test", password="safe-test-password"
+        )
+        self.client.force_authenticate(user=root)
+        response = self.client.get("/api/admin/export.csv")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("'=HYPERLINK", response.content.decode())
+
+    def test_withdrawing_public_consent_removes_public_shop(self):
+        self.business.status = CustomerBusiness.Status.SERVED
+        self.business.consent.public_listing = True
+        self.business.save(update_fields=["status"])
+        self.business.consent.save(update_fields=["public_listing"])
+        root = get_user_model().objects.create_superuser(
+            username="consent-root", email="consent-root@example.test", password="safe-test-password"
+        )
+        self.client.force_authenticate(user=root)
+        response = self.client.get("/api/public/shops", {"bbox": "39,-7,40,-6"})
+        self.assertEqual(len(response.data["items"]), 1)
+        self.assertEqual(self.client.patch(
+            f"/api/admin/businesses/{self.business.pk}", {"publicListing": False}, format="json"
+        ).status_code, 200)
+        response = self.client.get("/api/public/shops", {"bbox": "39,-7,40,-6"})
+        self.assertEqual(response.data["items"], [])
+
+
+    def test_login_rejects_ambiguous_case_insensitive_email(self):
+        group, _ = Group.objects.get_or_create(name="dispatcher")
+        for username in ("ambiguous-one", "ambiguous-two"):
+            user = get_user_model().objects.create_user(
+                username=username, email="duplicate@example.test", password="safe-test-password"
+            )
+            user.groups.add(group)
+        client = APIClient(enforce_csrf_checks=True)
+        csrf = client.get("/api/auth/csrf")
+        token = csrf.data["csrfToken"]
+        response = client.post(
+            "/api/auth/login", {"email": "DUPLICATE@example.test", "password": "safe-test-password"},
+            format="json", HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertTrue(AuditLog.objects.filter(action="auth.login_failed", metadata={"reason": "credentials_or_role"}).exists())
+
+    def test_login_requires_csrf_token(self):
+        client = APIClient(enforce_csrf_checks=True)
+        response = client.post("/api/auth/login", {"email": "staff@example.test", "password": "not-used"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(AuditLog.objects.filter(action="auth.login_failed", metadata={"reason": "csrf"}).exists())
 
     def test_phone_change_rebinds_live_keys_and_audits_field_names(self):
         old_phone, new_phone = "+255712345678", "+255712345677"
