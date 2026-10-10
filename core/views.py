@@ -22,6 +22,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import AuditLog, BusinessLocation, CodeAttempt, CustomerBusiness, DemandCell, IdempotencyRecord, ProviderCode, ServiceVisit, VerificationSession
+from .permissions import AuditIsAuthenticated
 from .security import code_attempts_throttled, hash_value, issue_provider_code, record_audit, verify_provider_code
 from .serializers import LocationSubmissionSerializer, ProviderCodeVerifySerializer, normalize_phone
 from .services import acquire_submission_locks, find_duplicate, geometry_bounds, record_submission, rounded_public_coordinate
@@ -166,6 +167,10 @@ def verify_code(request):
                 "publicListing": customer.consent.public_listing,
             }
             record_audit(request=request, actor=None, action="customer.key_login", object_type="CustomerBusiness", object_id=customer.pk)
+        else:
+            record_audit(request=request, actor=None, action="customer.key_verified", object_type="ProviderCode", object_id=session.provider_code_id)
+    else:
+        record_audit(request=request, actor=None, action="customer.key_verified", object_type="ProviderCode", object_id=session.provider_code_id)
     return Response(result)
 
 
@@ -309,7 +314,11 @@ def update_customer_profile(request):
                 key_hash=key_hash, session=session, business=business,
                 response_status=status.HTTP_200_OK, response_body=body,
             )
-            record_audit(request=request, actor=None, action="customer.profile_updated", object_type="CustomerBusiness", object_id=business.pk)
+            record_audit(
+                request=request, actor=None, action="customer.profile_updated",
+                object_type="CustomerBusiness", object_id=business.pk,
+                metadata={"changed_fields": ["customer_name", "business_name", "location", "public_listing"]},
+            )
             return Response(body)
     except IntegrityError:
         prior = IdempotencyRecord.objects.filter(key_hash=key_hash).first()
@@ -325,10 +334,13 @@ def has_role(user, role):
 def staff_required(request, *, admin=False):
     role = "admin" if admin else None
     if not request.user.is_authenticated:
+        record_audit(request=request, actor=None, action="auth.authorization_denied", object_type="StaffEndpoint", object_id=request.path, metadata={"reason": "anonymous"})
         return error("not_authenticated", "Staff sign-in is required.", status.HTTP_401_UNAUTHORIZED)
     if role and not has_role(request.user, role):
+        record_audit(request=request, actor=request.user, action="auth.authorization_denied", object_type="StaffEndpoint", object_id=request.path, metadata={"reason": "role_required"})
         return error("not_allowed", "This action is limited to administrators.", status.HTTP_403_FORBIDDEN)
     if not role and not (has_role(request.user, "dispatcher") or has_role(request.user, "admin")):
+        record_audit(request=request, actor=request.user, action="auth.authorization_denied", object_type="StaffEndpoint", object_id=request.path, metadata={"reason": "staff_role_required"})
         return error("not_allowed", "This action is limited to staff.", status.HTTP_403_FORBIDDEN)
     return None
 
@@ -343,6 +355,7 @@ def admin_or_superuser(user):
 
 def superuser_required(request):
     if not request.user.is_superuser:
+        record_audit(request=request, actor=request.user, action="auth.authorization_denied", object_type="StaffEndpoint", object_id=request.path, metadata={"reason": "superuser_required"})
         return error("not_allowed", "Only the superuser can manage staff accounts.", status.HTTP_403_FORBIDDEN)
     return None
 
@@ -360,6 +373,7 @@ def auth_login(request):
     raw_request = request._request
     csrf_failure = CsrfViewMiddleware(lambda req: HttpResponse()).process_view(raw_request, lambda req: None, (), {})
     if csrf_failure is not None:
+        record_audit(request=request, actor=None, action="auth.login_failed", object_type="User", metadata={"reason": "csrf"})
         return error("csrf_failed", "Refresh the sign-in page and try again.", status.HTTP_403_FORBIDDEN)
     raw_email = request.data.get("email", "")
     password = request.data.get("password", "")
@@ -372,6 +386,7 @@ def auth_login(request):
     if user is None or not user.is_active or not (
         has_role(user, "dispatcher") or has_role(user, "admin") or user.groups.filter(name="service_provider").exists()
     ):
+        record_audit(request=request, actor=None, action="auth.login_failed", object_type="User", metadata={"reason": "credentials_or_role"})
         return error("invalid_credentials", "Email or password is incorrect.", status.HTTP_401_UNAUTHORIZED)
     login(raw_request, user)
     record_audit(request=request, actor=user, action="auth.login", object_type="User", object_id=user.pk)
@@ -387,7 +402,7 @@ def auth_login(request):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AuditIsAuthenticated])
 def admin_staff_users(request):
     denied = superuser_required(request)
     if denied:
@@ -396,14 +411,16 @@ def admin_staff_users(request):
     User = get_user_model()
     if request.method == "GET":
         users = User.objects.filter(groups__name__in=["admin", "service_provider"]).distinct().order_by("username")
-        return Response({"items": [{
+        items = [{
             "id": user.pk,
             "username": user.get_username(),
             "email": user.email,
             "role": "service_provider" if user.groups.filter(name="service_provider").exists() else "admin",
             "active": user.is_active,
             "createdAt": user.date_joined.isoformat(),
-        } for user in users]})
+        } for user in users]
+        record_audit(request=request, actor=request.user, action="staff.users_listed", object_type="User", object_id="all")
+        return Response({"items": items})
 
     username = request.data.get("username", "")
     email = request.data.get("email", "")
@@ -440,7 +457,7 @@ def admin_staff_users(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AuditIsAuthenticated])
 def auth_logout(request):
     record_audit(request=request, actor=request.user, action="auth.logout", object_type="User", object_id=request.user.pk)
     logout(request._request)
@@ -556,7 +573,7 @@ def serialize_staff_business(business, *, detail=False):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AuditIsAuthenticated])
 def admin_businesses(request):
     denied = staff_required(request)
     if denied:
@@ -588,7 +605,7 @@ def admin_businesses(request):
 
 
 @api_view(["GET", "PATCH"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AuditIsAuthenticated])
 def admin_business_detail(request, business_id):
     denied = staff_required(request)
     if denied:
@@ -605,6 +622,7 @@ def admin_business_detail(request, business_id):
     if not isinstance(data, dict) or set(data) - allowed:
         return error("invalid_patch", "The update contains unsupported fields.", status.HTTP_400_BAD_REQUEST)
     if "publicListing" in data and not has_role(request.user, "admin"):
+        record_audit(request=request, actor=request.user, action="auth.authorization_denied", object_type="StaffEndpoint", object_id=request.path, metadata={"reason": "admin_role_required"})
         return error("not_allowed", "Only administrators can change public listing consent.", status.HTTP_403_FORBIDDEN)
     if "status" in data:
         if data["status"] not in CustomerBusiness.Status.values:
@@ -701,13 +719,23 @@ def admin_business_detail(request, business_id):
             business.location.save(update_fields=["corrected_lat", "corrected_lng", "corrected_by", "corrected_at", "team_verified"])
             record_audit(request=request, actor=request.user, action="location.corrected", object_type="CustomerBusiness", object_id=business.pk)
         business.save()
-        record_audit(request=request, actor=request.user, action="business.updated", object_type="CustomerBusiness", object_id=business.pk)
+        field_names = {
+            "customerName": "customer_name", "businessName": "business_name", "phone": "phone",
+            "status": "status", "notes": "notes", "assignee": "assigned_to",
+            "publicListing": "public_listing", "correctedLatitude": "location",
+            "correctedLongitude": "location",
+        }
+        record_audit(
+            request=request, actor=request.user, action="business.updated",
+            object_type="CustomerBusiness", object_id=business.pk,
+            metadata={"changed_fields": sorted({field_names[name] for name in data})},
+        )
     business.refresh_from_db()
     return Response(serialize_staff_business(business, detail=True))
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AuditIsAuthenticated])
 def admin_business_visits(request, business_id):
     denied = staff_required(request)
     if denied:
@@ -731,7 +759,7 @@ def csv_safe_text(value):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AuditIsAuthenticated])
 def admin_export(request):
     denied = staff_required(request, admin=True)
     if denied:
@@ -755,12 +783,14 @@ def admin_export(request):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AuditIsAuthenticated])
 def admin_provider_codes(request):
     if not admin_or_superuser(request.user) and not request.user.groups.filter(name="service_provider").exists():
+        record_audit(request=request, actor=request.user, action="auth.authorization_denied", object_type="StaffEndpoint", object_id=request.path, metadata={"reason": "provider_role_required"})
         return error("not_allowed", "Provider-code access is limited to administrators and service providers.", status.HTTP_403_FORBIDDEN)
     is_provider = not request.user.is_superuser and request.user.groups.filter(name="service_provider").exists()
     if request.method == "POST" and not service_provider_or_superuser(request.user):
+        record_audit(request=request, actor=request.user, action="auth.authorization_denied", object_type="StaffEndpoint", object_id=request.path, metadata={"reason": "code_issue_role_required"})
         return error("not_allowed", "Only the superuser and service providers can generate customer keys.", status.HTTP_403_FORBIDDEN)
     if request.method == "GET":
         codes = ProviderCode.objects.all()
@@ -859,18 +889,20 @@ def admin_provider_codes(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AuditIsAuthenticated])
 def admin_revoke_code(request, code_id):
     is_owner_provider = (
         request.user.groups.filter(name="service_provider").exists()
         and not request.user.is_superuser
     )
     if not admin_or_superuser(request.user) and not is_owner_provider:
+        record_audit(request=request, actor=request.user, action="auth.authorization_denied", object_type="StaffEndpoint", object_id=request.path, metadata={"reason": "code_revoke_role_required"})
         return error("not_allowed", "Only an administrator or service provider can revoke a customer key.", status.HTTP_403_FORBIDDEN)
     code = ProviderCode.objects.filter(pk=code_id).first()
     if code is None:
         return error("not_found", "Provider code not found.", status.HTTP_404_NOT_FOUND)
     if is_owner_provider and code.created_by_id != request.user.pk:
+        record_audit(request=request, actor=request.user, action="auth.authorization_denied", object_type="ProviderCode", object_id=code.pk, metadata={"reason": "provider_not_owner"})
         return error("not_allowed", "Service providers can revoke only keys they created.", status.HTTP_403_FORBIDDEN)
     if code.status != ProviderCode.Status.REVOKED:
         code.status = ProviderCode.Status.REVOKED
@@ -881,7 +913,7 @@ def admin_revoke_code(request, code_id):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AuditIsAuthenticated])
 def admin_audit_log(request):
     denied = staff_required(request, admin=True)
     if denied:

@@ -161,6 +161,30 @@ class CustomerFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, {"valid": False})
 
+    def test_new_customer_key_verification_is_audited_without_customer_values(self):
+        code = "AUDIT-NEW-CUSTOMER"
+        phone = "+255712345671"
+        ProviderCode.objects.create(
+            code_hash=hash_value(code),
+            target_phone_hash=hash_value("provider-phone:" + phone),
+            target_phone_last4=phone[-4:],
+            reusable=True,
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        response = APIClient().post("/api/provider-codes/verify", {"phone": phone, "code": code}, format="json")
+        self.assertTrue(response.data["valid"])
+        event = AuditLog.objects.get(action="customer.key_verified")
+        self.assertEqual(event.object_type, "ProviderCode")
+        self.assertNotIn(phone, str(event.metadata))
+        self.assertNotIn(code, str(event.metadata))
+
+    def test_failed_staff_login_audit_stores_reason_only(self):
+        response = APIClient().post("/api/auth/login", {"email": "not-a-user@example.test", "password": "never-log-this"}, format="json")
+        self.assertEqual(response.status_code, 401)
+        event = AuditLog.objects.get(action="auth.login_failed")
+        self.assertEqual(event.metadata, {"reason": "credentials_or_role"})
+        self.assertNotIn("never-log-this", str(event.metadata))
+
 
 @skipUnless(connection.vendor == "postgresql", "Advisory-lock concurrency regression requires PostgreSQL")
 class ConcurrentSubmissionTests(TransactionTestCase):
@@ -235,6 +259,7 @@ class StaffPermissionTests(TestCase):
 
     def test_anonymous_denied_and_dispatcher_cannot_export(self):
         self.assertEqual(self.client.get("/api/admin/businesses").status_code, 403)
+        self.assertTrue(AuditLog.objects.filter(action="auth.authorization_denied", object_type="StaffEndpoint").exists())
         self.assertContains(self.client.get("/staff/"), "Staff sign in")
         dispatcher_group, _ = Group.objects.get_or_create(name="dispatcher")
         user = get_user_model().objects.create_user(username="dispatcher", password="safe-test-password")
@@ -260,6 +285,16 @@ class StaffPermissionTests(TestCase):
         self.assertEqual(response.data["latitude"], -6.81)
         self.assertIn("-6.810000,39.210000", response.data["navigationLinks"]["googleMaps"])
         self.assertTrue(AuditLog.objects.filter(action="location.corrected", object_id=str(self.business.pk)).exists())
+        event = AuditLog.objects.get(action="business.updated", object_id=str(self.business.pk))
+        self.assertEqual(event.metadata, {"changed_fields": ["location"]})
+
+    def test_superuser_staff_listing_is_audited(self):
+        user = get_user_model().objects.create_superuser(
+            username="auditor-root", email="root-audit@example.test", password="safe-test-password"
+        )
+        self.client.force_authenticate(user=user)
+        self.assertEqual(self.client.get("/api/admin/staff-users").status_code, 200)
+        self.assertTrue(AuditLog.objects.filter(action="staff.users_listed", actor=user).exists())
 
     def test_phone_change_rebinds_live_keys_and_audits_field_names(self):
         old_phone, new_phone = "+255712345678", "+255712345677"

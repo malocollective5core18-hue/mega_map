@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Public Leaflet assets are pinned to version 1.9.4 and loaded with Subresource Integrity verification.
+- Staff audit coverage now records failed sign-in, denied authorization, staff-user listing, new-customer key verification, and changed field names without storing submitted values.
 
 Changes are recorded here for release and deployment reviews.
 
