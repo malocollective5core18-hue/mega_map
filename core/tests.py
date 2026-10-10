@@ -1,14 +1,21 @@
+import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
+from threading import BrokenBarrierError, Barrier
+from unittest import skipUnless
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from django.db import close_old_connections, connection
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import AuditLog, BusinessLocation, Consent, CustomerBusiness, DemandCell, ProviderCode
+from .models import AuditLog, BusinessLocation, Consent, CustomerBusiness, DemandCell, ProviderCode, VerificationSession
 from .security import hash_value
+from .services import find_duplicate as real_find_duplicate
 
 
 class PublicPrivacyTests(TestCase):
@@ -71,6 +78,70 @@ class CustomerFlowTests(TestCase):
         response = APIClient().post("/api/provider-codes/verify", {"code": code, "phone": "0755123456"}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, {"valid": False})
+
+
+@skipUnless(connection.vendor == "postgresql", "Advisory-lock concurrency regression requires PostgreSQL")
+class ConcurrentSubmissionTests(TransactionTestCase):
+    reset_sequences = True
+
+    def test_near_simultaneous_same_phone_submissions_create_only_one_business(self):
+        phone = "+255712345679"
+        tokens = ("first-test-token", "second-test-token")
+        for index, token in enumerate(tokens):
+            code = ProviderCode.objects.create(
+                code_hash=hash_value(f"unused-test-code-{index}"),
+                target_phone_hash=hash_value("provider-phone:" + phone),
+                expires_at=timezone.now() + timedelta(minutes=10),
+            )
+            VerificationSession.objects.create(
+                provider_code=code,
+                token_hash=hashlib.sha256(token.encode()).hexdigest(),
+                expires_at=timezone.now() + timedelta(minutes=5),
+            )
+
+        check_barrier = Barrier(2)
+
+        def synchronized_duplicate_check(**kwargs):
+            duplicate = real_find_duplicate(**kwargs)
+            try:
+                check_barrier.wait(timeout=1)
+            except BrokenBarrierError:
+                pass
+            return duplicate
+
+        def submit(token, key):
+            close_old_connections()
+            try:
+                response = APIClient().post(
+                    "/api/location-submissions",
+                    {
+                        "customerName": "Regression Test",
+                        "businessName": "Regression Shop",
+                        "phone": phone,
+                        "latitude": -6.812345,
+                        "longitude": 39.289876,
+                        "accuracyMeters": 20,
+                        "consent": True,
+                        "confirmed": True,
+                        "publicListing": False,
+                    },
+                    format="json",
+                    HTTP_AUTHORIZATION=f"Bearer {token}",
+                    HTTP_IDEMPOTENCY_KEY=key,
+                )
+                return response.status_code
+            finally:
+                close_old_connections()
+
+        with patch("core.views.find_duplicate", side_effect=synchronized_duplicate_check):
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                statuses = list(executor.map(
+                    lambda item: submit(*item),
+                    zip(tokens, ("concurrent-submission-key-01", "concurrent-submission-key-02")),
+                ))
+
+        self.assertEqual(sorted(statuses), [201, 409])
+        self.assertEqual(CustomerBusiness.objects.filter(phone=phone).count(), 1)
 
 
 class StaffPermissionTests(TestCase):

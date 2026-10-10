@@ -7,7 +7,8 @@ Date: 10 October 2026. Branch: `fix/audit-defects`. No production database or se
 - Runtime: Python 3.14.4; Django 5.2.18; DRF 3.16.1. Runtime dependencies are pinned in `requirements.lock`, and Render's `PYTHON_VERSION` is set in `render.yaml`.
 - `DJANGO_SETTINGS_MODULE=stocktaking.settings.test python manage.py check`: Pass.
 - `DJANGO_SETTINGS_MODULE=stocktaking.settings.test python manage.py makemigrations --check --dry-run`: Pass; no changes detected.
-- `DJANGO_SETTINGS_MODULE=stocktaking.settings.test python manage.py test`: Pass on SQLite; 8 tests.
+- `DJANGO_SETTINGS_MODULE=stocktaking.settings.test python manage.py test`: 8 passed, 1 PostgreSQL-only concurrency regression skipped on SQLite.
+- D-01 PostgreSQL concurrency regression: present but skipped because PostgreSQL is unavailable. Local PostgreSQL 18 is installed but the workspace user cannot start its stopped cluster; Docker is also unavailable.
 - `DJANGO_SETTINGS_MODULE=stocktaking.settings.prod ... python manage.py check --deploy`: Command completed with one expected `security.W009` warning because the audit used a deliberately short dummy secret. This is not production-secret evidence.
 - `.venv/bin/python -m pip check`: Pass; no broken requirements.
 - PostgreSQL: Not tested. Docker is not installed, and local `pg_isready` previously reported no server response. PostgreSQL migration and concurrency gates remain open.

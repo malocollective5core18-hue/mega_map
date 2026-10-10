@@ -24,7 +24,7 @@ from rest_framework.response import Response
 from .models import AuditLog, BusinessLocation, CodeAttempt, CustomerBusiness, DemandCell, IdempotencyRecord, ProviderCode, ServiceVisit, VerificationSession
 from .security import code_attempts_throttled, hash_value, issue_provider_code, record_audit, verify_provider_code
 from .serializers import LocationSubmissionSerializer, ProviderCodeVerifySerializer, normalize_phone
-from .services import find_duplicate, geometry_bounds, record_submission, rounded_public_coordinate
+from .services import acquire_submission_locks, find_duplicate, geometry_bounds, record_submission, rounded_public_coordinate
 from .throttles import PublicThrottle, StaffLoginThrottle, SubmissionThrottle, VerifyThrottle
 
 
@@ -212,6 +212,9 @@ def submit_location(request):
             expected_phone_hash = session.provider_code.target_phone_hash
             if not expected_phone_hash or not hmac.compare_digest(expected_phone_hash, hash_value("provider-phone:" + data["phone"])):
                 return error("phone_code_mismatch", "Use the phone number associated with this service code.", status.HTTP_422_UNPROCESSABLE_ENTITY)
+            acquire_submission_locks(
+                phone=data["phone"], latitude=data["latitude"], longitude=data["longitude"]
+            )
             if find_duplicate(phone=data["phone"], latitude=data["latitude"], longitude=data["longitude"]):
                 body = {"error": {"code": "duplicate", "message": "A request for this phone or location already exists."}}
                 session.used_at = timezone.now()

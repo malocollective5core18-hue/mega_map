@@ -1,12 +1,42 @@
+import hashlib
 import math
 import secrets
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
+from django.db import connection
 from django.db.models import Q
 
 from .models import BusinessLocation, Consent, CustomerBusiness
 from .security import hash_ip, record_audit
+
+
+def acquire_submission_locks(*, phone, latitude, longitude):
+    """Serialize duplicate checks for a phone and nearby map cells on PostgreSQL."""
+    if connection.vendor != "postgresql":
+        return
+    if not connection.in_atomic_block:
+        raise RuntimeError("Submission advisory locks require an active transaction.")
+
+    def lock_id(value):
+        return int.from_bytes(hashlib.sha256(value).digest()[:8], "big", signed=True)
+
+    locks = {lock_id(b"customer-phone:" + phone.encode("utf-8"))}
+    lat = float(latitude)
+    lng = float(longitude)
+    lat_step = 30 / 111_320
+    cosine = max(0.01, abs(math.cos(math.radians(lat))))
+    lng_step = min(360.0, 30 / (111_320 * cosine))
+    lat_cell = math.floor(lat / lat_step)
+    lng_cell = math.floor(lng / lng_step)
+    for lat_offset in (-1, 0, 1):
+        for lng_offset in (-1, 0, 1):
+            cell = f"{lat_cell + lat_offset}:{lng_cell + lng_offset}".encode("ascii")
+            locks.add(lock_id(b"customer-location:" + cell))
+
+    with connection.cursor() as cursor:
+        for advisory_id in sorted(locks):
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [advisory_id])
 
 
 def make_public_reference():
