@@ -29,8 +29,12 @@ class LocationSubmissionSerializer(serializers.Serializer):
     businessName = serializers.CharField(max_length=200, trim_whitespace=True)
     phone = serializers.CharField(max_length=32, trim_whitespace=True)
     latitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-90, max_value=90)
-    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-180, max_value=180)
-    accuracyMeters = serializers.DecimalField(max_digits=9, decimal_places=2, min_value=0, required=False, allow_null=True)
+    longitude = serializers.DecimalField(
+        max_digits=9, decimal_places=6, min_value=-180, max_value=180
+    )
+    accuracyMeters = serializers.DecimalField(
+        max_digits=9, decimal_places=2, min_value=0, required=False, allow_null=True
+    )
     consent = serializers.BooleanField()
     confirmed = serializers.BooleanField()
     publicListing = serializers.BooleanField()

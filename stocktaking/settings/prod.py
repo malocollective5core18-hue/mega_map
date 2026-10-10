@@ -1,10 +1,10 @@
 from .base import *  # noqa: F403
 
-if DEBUG:
+if DEBUG:  # noqa: F405
     raise RuntimeError("Production settings must not run with DEBUG enabled.")
-if not os.environ.get("DJANGO_ALLOWED_HOSTS"):
+if not os.environ.get("DJANGO_ALLOWED_HOSTS"):  # noqa: F405
     raise RuntimeError("Set DJANGO_ALLOWED_HOSTS for production.")
-if not os.environ.get("CSRF_TRUSTED_ORIGINS"):
+if not os.environ.get("CSRF_TRUSTED_ORIGINS"):  # noqa: F405
     raise RuntimeError("Set CSRF_TRUSTED_ORIGINS for production.")
 
 SECURE_SSL_REDIRECT = True

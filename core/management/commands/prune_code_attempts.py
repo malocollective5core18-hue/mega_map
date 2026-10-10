@@ -10,8 +10,12 @@ class Command(BaseCommand):
     help = "Delete expired provider-code attempt digests."
 
     def add_arguments(self, parser):
-        parser.add_argument("--hours", type=int, default=24, help="Delete attempts older than this many hours.")
-        parser.add_argument("--batch-size", type=int, default=1000, help="Maximum rows deleted per query.")
+        parser.add_argument(
+            "--hours", type=int, default=24, help="Delete attempts older than this many hours."
+        )
+        parser.add_argument(
+            "--batch-size", type=int, default=1000, help="Maximum rows deleted per query."
+        )
 
     def handle(self, *args, **options):
         hours = options["hours"]

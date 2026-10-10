@@ -16,7 +16,14 @@ class ProviderCodeAdmin(admin.ModelAdmin):
     list_display = ("id", "label", "status", "expires_at", "use_count", "max_uses", "created_by")
     list_filter = ("status",)
     search_fields = ("label",)
-    readonly_fields = ("code_hash", "target_phone_hash", "target_phone_last4", "use_count", "created_at", "revoked_at")
+    readonly_fields = (
+        "code_hash",
+        "target_phone_hash",
+        "target_phone_last4",
+        "use_count",
+        "created_at",
+        "revoked_at",
+    )
 
     def has_view_permission(self, request, obj=None):
         return request.user.is_superuser
@@ -28,7 +35,14 @@ class ProviderCodeAdmin(admin.ModelAdmin):
 @admin.register(VerificationSession)
 class VerificationSessionAdmin(admin.ModelAdmin):
     list_display = ("id", "provider_code", "expires_at", "used_at", "created_at")
-    readonly_fields = ("provider_code", "token_hash", "expires_at", "used_at", "created_at", "ip_hash")
+    readonly_fields = (
+        "provider_code",
+        "token_hash",
+        "expires_at",
+        "used_at",
+        "created_at",
+        "ip_hash",
+    )
 
     def has_view_permission(self, request, obj=None):
         return request.user.is_superuser

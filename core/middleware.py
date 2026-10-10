@@ -21,8 +21,10 @@ class ContentSecurityPolicyReportOnlyMiddleware:
         "default-src 'self'; "
         "script-src 'self' https://unpkg.com https://cdnjs.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com; "
-        "img-src 'self' data: blob: https://*.arcgisonline.com https://server.arcgisonline.com https://*.openstreetmap.org; "
-        "connect-src 'self' https://photon.komoot.io https://*.arcgisonline.com https://server.arcgisonline.com https://*.openstreetmap.org; "
+        "img-src 'self' data: blob: https://*.arcgisonline.com "
+        "https://server.arcgisonline.com https://*.openstreetmap.org; "
+        "connect-src 'self' https://photon.komoot.io https://*.arcgisonline.com "
+        "https://server.arcgisonline.com https://*.openstreetmap.org; "
         "font-src 'self' data: https://unpkg.com https://cdnjs.cloudflare.com; "
         "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     )

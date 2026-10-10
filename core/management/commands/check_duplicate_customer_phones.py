@@ -18,7 +18,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("No duplicate customer phones found."))
             return
 
-        self.stderr.write("Duplicate customer phones found; stop before applying a phone uniqueness migration:")
+        self.stderr.write(
+            "Duplicate customer phones found; stop before applying a phone uniqueness migration:"
+        )
         for row in duplicates:
             phone = row["phone"]
             self.stderr.write(f"  •••• {phone[-4:]}: {row['record_count']} records")

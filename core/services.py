@@ -1,11 +1,10 @@
 import hashlib
 import math
 import secrets
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
 from django.db import connection
-from django.db.models import Q
 
 from .models import BusinessLocation, Consent, CustomerBusiness
 from .security import hash_ip, hash_value, record_audit
@@ -61,8 +60,10 @@ def find_duplicate(*, phone, latitude, longitude):
     cos_lat = max(0.01, abs(math.cos(math.radians(lat))))
     lng_delta = min(180.0, 30 / (111_320 * cos_lat))
     candidates = BusinessLocation.objects.filter(
-        latitude__gte=Decimal(str(lat - lat_delta)), latitude__lte=Decimal(str(lat + lat_delta)),
-        longitude__gte=Decimal(str(lng - lng_delta)), longitude__lte=Decimal(str(lng + lng_delta)),
+        latitude__gte=Decimal(str(lat - lat_delta)),
+        latitude__lte=Decimal(str(lat + lat_delta)),
+        longitude__gte=Decimal(str(lng - lng_delta)),
+        longitude__lte=Decimal(str(lng + lng_delta)),
     ).select_related("business")
     for location in candidates.iterator():
         lat1, lon1 = math.radians(lat), math.radians(lng)
@@ -87,7 +88,9 @@ def record_submission(*, data, request):
         latitude=data["latitude"],
         longitude=data["longitude"],
         accuracy_m=data.get("accuracyMeters"),
-        source=BusinessLocation.Source.GPS if data.get("accuracyMeters") is not None else BusinessLocation.Source.MANUAL,
+        source=BusinessLocation.Source.GPS
+        if data.get("accuracyMeters") is not None
+        else BusinessLocation.Source.MANUAL,
     )
     Consent.objects.create(
         business=business,
@@ -96,7 +99,12 @@ def record_submission(*, data, request):
         public_listing=data["publicListing"],
         ip_hash=hash_ip(request),
     )
-    record_audit(request=request, action="location.submitted", object_type="CustomerBusiness", object_id=business.pk)
+    record_audit(
+        request=request,
+        action="location.submitted",
+        object_type="CustomerBusiness",
+        object_id=business.pk,
+    )
     return business
 
 
@@ -110,7 +118,12 @@ def geometry_bounds(geojson):
         bounds = [b for b in bounds if b]
         if not bounds:
             return None
-        return min(b[0] for b in bounds), min(b[1] for b in bounds), max(b[2] for b in bounds), max(b[3] for b in bounds)
+        return (
+            min(b[0] for b in bounds),
+            min(b[1] for b in bounds),
+            max(b[2] for b in bounds),
+            max(b[3] for b in bounds),
+        )
     coords = geojson.get("coordinates")
     points = []
 

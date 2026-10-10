@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0002_codeattempt_idempotencyrecord_session_and_more'),
+        ("core", "0002_codeattempt_idempotencyrecord_session_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='providercode',
-            name='target_phone_hash',
-            field=models.CharField(blank=True, db_index=True, default='', max_length=64),
+            model_name="providercode",
+            name="target_phone_hash",
+            field=models.CharField(blank=True, db_index=True, default="", max_length=64),
         ),
     ]

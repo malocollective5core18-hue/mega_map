@@ -29,7 +29,9 @@ def record_audit(*, request=None, actor=None, action, object_type, object_id="",
     )
 
 
-def issue_provider_code(*, target_phone, expires_at, max_uses=1, label="", created_by=None, reusable=False):
+def issue_provider_code(
+    *, target_phone, expires_at, max_uses=1, label="", created_by=None, reusable=False
+):
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     raw_code = "".join(secrets.choice(alphabet) for _ in range(16))
     code = ProviderCode.objects.create(
@@ -51,7 +53,11 @@ def verify_provider_code(raw_code, target_phone, *, request=None):
     digest = hash_value(normalized)
     code = ProviderCode.objects.select_for_update().filter(code_hash=digest).first()
     phone_digest = hash_value("provider-phone:" + target_phone)
-    if code is None or not code.accepts() or not hmac.compare_digest(code.target_phone_hash, phone_digest):
+    if (
+        code is None
+        or not code.accepts()
+        or not hmac.compare_digest(code.target_phone_hash, phone_digest)
+    ):
         CodeAttempt.objects.create(code_hash=digest)
         return None
     ttl = min(settings.PROVIDER_CODE_TTL_SECONDS, 30 * 60)
@@ -79,4 +85,9 @@ def code_attempts_throttled(raw_code):
         if stale_ids:
             CodeAttempt.objects.filter(pk__in=stale_ids).delete()
     digest = hash_value("".join(raw_code.split()).upper())
-    return CodeAttempt.objects.filter(code_hash=digest, created_at__gte=now - timedelta(hours=1)).count() >= 5
+    return (
+        CodeAttempt.objects.filter(
+            code_hash=digest, created_at__gte=now - timedelta(hours=1)
+        ).count()
+        >= 5
+    )

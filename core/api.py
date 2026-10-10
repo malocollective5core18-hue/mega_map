@@ -1,11 +1,14 @@
-from rest_framework.views import exception_handler as drf_exception_handler
 from rest_framework.response import Response
+from rest_framework.views import exception_handler as drf_exception_handler
 
 
 def exception_handler(exc, context):
     response = drf_exception_handler(exc, context)
     if response is None:
-        return Response({"error": {"code": "internal_error", "message": "The request could not be completed."}}, status=500)
+        return Response(
+            {"error": {"code": "internal_error", "message": "The request could not be completed."}},
+            status=500,
+        )
     if isinstance(response.data, dict) and "error" in response.data:
         return response
     if response.status_code == 400:
