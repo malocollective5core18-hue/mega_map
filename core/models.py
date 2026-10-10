@@ -161,6 +161,7 @@ class AuditLog(models.Model):
     action = models.CharField(max_length=80)
     object_type = models.CharField(max_length=80)
     object_id = models.CharField(max_length=80, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
     ip_hash = models.CharField(max_length=64, blank=True)
 

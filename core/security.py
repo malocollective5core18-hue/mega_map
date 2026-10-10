@@ -18,12 +18,13 @@ def hash_ip(request):
     return hash_value(request.META.get("REMOTE_ADDR", "")) if request else ""
 
 
-def record_audit(*, request=None, actor=None, action, object_type, object_id=""):
+def record_audit(*, request=None, actor=None, action, object_type, object_id="", metadata=None):
     return AuditLog.objects.create(
         actor=actor,
         action=action,
         object_type=object_type,
         object_id=str(object_id),
+        metadata=metadata or {},
         ip_hash=hash_ip(request),
     )
 

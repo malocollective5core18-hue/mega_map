@@ -178,3 +178,48 @@ class StaffPermissionTests(TestCase):
         self.assertEqual(response.data["latitude"], -6.81)
         self.assertIn("-6.810000,39.210000", response.data["navigationLinks"]["googleMaps"])
         self.assertTrue(AuditLog.objects.filter(action="location.corrected", object_id=str(self.business.pk)).exists())
+
+    def test_phone_change_rebinds_live_keys_and_audits_field_names(self):
+        old_phone, new_phone = "+255712345678", "+255712345677"
+        raw_key = "CHANGE-KEY-12345"
+        ProviderCode.objects.create(
+            code_hash=hash_value(raw_key),
+            target_phone_hash=hash_value("provider-phone:" + old_phone),
+            target_phone_last4=old_phone[-4:],
+            expires_at=timezone.now() + timedelta(hours=1),
+            max_uses=3,
+        )
+        revoked_raw_key = "REVOKED-KEY-12345"
+        ProviderCode.objects.create(
+            code_hash=hash_value(revoked_raw_key),
+            target_phone_hash=hash_value("provider-phone:" + old_phone),
+            target_phone_last4=old_phone[-4:],
+            expires_at=timezone.now() + timedelta(hours=1),
+            status=ProviderCode.Status.REVOKED,
+            max_uses=3,
+        )
+        group, _ = Group.objects.get_or_create(name="dispatcher")
+        user = get_user_model().objects.create_user(username="phone-editor", password="safe-test-password")
+        user.groups.add(group)
+        self.client.force_authenticate(user=user)
+
+        response = self.client.patch(
+            f"/api/admin/businesses/{self.business.pk}", {"phone": new_phone}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        code = ProviderCode.objects.get(code_hash=hash_value(raw_key))
+        self.assertEqual(code.target_phone_hash, hash_value("provider-phone:" + new_phone))
+        self.assertEqual(code.target_phone_last4, new_phone[-4:])
+        revoked = ProviderCode.objects.get(code_hash=hash_value(revoked_raw_key))
+        self.assertEqual(revoked.target_phone_hash, hash_value("provider-phone:" + old_phone))
+        event = AuditLog.objects.get(action="business.phone_changed", object_id=str(self.business.pk))
+        self.assertEqual(event.metadata, {"changed_fields": ["phone"]})
+        old_login = APIClient().post(
+            "/api/provider-codes/verify", {"phone": old_phone, "code": raw_key}, format="json"
+        )
+        new_login = APIClient().post(
+            "/api/provider-codes/verify", {"phone": new_phone, "code": raw_key}, format="json"
+        )
+        self.assertEqual(old_login.data, {"valid": False})
+        self.assertTrue(new_login.data["valid"])

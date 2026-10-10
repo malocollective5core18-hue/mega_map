@@ -596,6 +596,7 @@ def admin_business_detail(request, business_id):
     business = CustomerBusiness.objects.select_related("location", "consent", "assigned_to").filter(pk=business_id).first()
     if business is None:
         return error("not_found", "Business not found.", status.HTTP_404_NOT_FOUND)
+    original_phone = business.phone
     if request.method == "GET":
         record_audit(request=request, actor=request.user, action="business.detail_viewed", object_type="CustomerBusiness", object_id=business.pk)
         return Response(serialize_staff_business(business, detail=True))
@@ -651,6 +652,38 @@ def admin_business_detail(request, business_id):
             return error("invalid_assignee", "Choose an active staff account.", status.HTTP_400_BAD_REQUEST)
         business.assigned_to = assignee
     with transaction.atomic():
+        if business.phone != original_phone:
+            locked_business = CustomerBusiness.objects.select_for_update().select_related("location").get(pk=business.pk)
+            if locked_business.phone != original_phone:
+                return error("phone_changed_concurrently", "Refresh the customer record and try again.", status.HTTP_409_CONFLICT)
+            acquire_submission_locks(
+                phone=original_phone,
+                other_phones=(business.phone,),
+                latitude=locked_business.location.latitude,
+                longitude=locked_business.location.longitude,
+            )
+            old_phone_hash = hash_value("provider-phone:" + original_phone)
+            new_phone_hash = hash_value("provider-phone:" + business.phone)
+            codes = list(
+                ProviderCode.objects.select_for_update()
+                .filter(target_phone_hash=old_phone_hash)
+                .exclude(status=ProviderCode.Status.REVOKED)
+            )
+            for code in codes:
+                code.target_phone_hash = new_phone_hash
+                code.target_phone_last4 = business.phone[-4:]
+            if codes:
+                ProviderCode.objects.bulk_update(codes, ["target_phone_hash", "target_phone_last4"])
+            locked_business.phone = business.phone
+            locked_business.save(update_fields=["phone", "updated_at"])
+            record_audit(
+                request=request,
+                actor=request.user,
+                action="business.phone_changed",
+                object_type="CustomerBusiness",
+                object_id=business.pk,
+                metadata={"changed_fields": ["phone"]},
+            )
         if "publicListing" in data:
             business.consent.public_listing = data["publicListing"]
             business.consent.save(update_fields=["public_listing"])

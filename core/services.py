@@ -8,10 +8,10 @@ from django.db import connection
 from django.db.models import Q
 
 from .models import BusinessLocation, Consent, CustomerBusiness
-from .security import hash_ip, record_audit
+from .security import hash_ip, hash_value, record_audit
 
 
-def acquire_submission_locks(*, phone, latitude, longitude):
+def acquire_submission_locks(*, phone, latitude, longitude, other_phones=()):
     """Serialize duplicate checks for a phone and nearby map cells on PostgreSQL."""
     if connection.vendor != "postgresql":
         return
@@ -21,7 +21,11 @@ def acquire_submission_locks(*, phone, latitude, longitude):
     def lock_id(value):
         return int.from_bytes(hashlib.sha256(value).digest()[:8], "big", signed=True)
 
-    locks = {lock_id(b"customer-phone:" + phone.encode("utf-8"))}
+    phone_values = {phone, *other_phones}
+    locks = {
+        lock_id(b"customer-phone:" + hash_value("provider-phone:" + value).encode("ascii"))
+        for value in phone_values
+    }
     lat = float(latitude)
     lng = float(longitude)
     lat_step = 30 / 111_320
