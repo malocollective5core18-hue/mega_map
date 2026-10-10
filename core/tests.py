@@ -2,12 +2,15 @@ import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
+from io import StringIO
 from threading import BrokenBarrierError, Barrier
 from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import close_old_connections, connection
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
@@ -46,6 +49,25 @@ class PublicPrivacyTests(TestCase):
         response = self.client.get("/api/public/demand-cells", {"bbox": "39,-7,40,-6"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item["cellId"] for item in response.data["items"]], ["large"])
+
+
+class DuplicatePhoneCheckTests(TestCase):
+    def test_pre_migration_duplicate_check_masks_phone_and_does_not_write(self):
+        for reference in ("BU-DUPCHECK-A", "BU-DUPCHECK-B"):
+            CustomerBusiness.objects.create(
+                public_ref=reference,
+                customer_name="Fixture Customer",
+                business_name=reference,
+                phone="+255700000001",
+            )
+        output = StringIO()
+
+        with self.assertRaises(CommandError):
+            call_command("check_duplicate_customer_phones", stdout=output, stderr=output)
+
+        self.assertIn("•••• 0001: 2 records", output.getvalue())
+        self.assertNotIn("+255700000001", output.getvalue())
+        self.assertEqual(CustomerBusiness.objects.filter(phone="+255700000001").count(), 2)
 
 
 class CustomerFlowTests(TestCase):
@@ -223,3 +245,29 @@ class StaffPermissionTests(TestCase):
         )
         self.assertEqual(old_login.data, {"valid": False})
         self.assertTrue(new_login.data["valid"])
+
+    def test_staff_phone_change_rejects_phone_used_by_another_business(self):
+        other = CustomerBusiness.objects.create(
+            public_ref="BU-OTHERPHONE",
+            customer_name="Other Customer",
+            business_name="Other Shop",
+            phone="+255712345670",
+        )
+        BusinessLocation.objects.create(
+            business=other, latitude=Decimal("-6.81"), longitude=Decimal("39.21")
+        )
+        group, _ = Group.objects.get_or_create(name="dispatcher")
+        user = get_user_model().objects.create_user(username="duplicate-phone-editor", password="safe-test-password")
+        user.groups.add(group)
+        self.client.force_authenticate(user=user)
+
+        response = self.client.patch(
+            f"/api/admin/businesses/{self.business.pk}",
+            {"phone": other.phone},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.data["error"]["code"], "phone_in_use")
+        self.business.refresh_from_db()
+        self.assertEqual(self.business.phone, "+255712345678")

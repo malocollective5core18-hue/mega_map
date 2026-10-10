@@ -5,6 +5,7 @@
 - Approximate public coordinates are rounded to three decimal places (roughly 100 m latitude granularity); demand cells require at least three submissions.
 - Dispatchers may view and edit customer records; admins control public listing consent, exports, provider codes and audit records.
 - A GPS fix with no reported accuracy is considered manually placed for staff confidence display.
+- **Needs owner decision:** Confirm the one-business-per-phone rule and the handling of legacy duplicate-phone records before applying a database uniqueness constraint. Staff phone edits currently reject a phone already used by another business; run `python manage.py check_duplicate_customer_phones` against a protected data copy before any uniqueness migration.
 
 ## Owner/legal decisions required before release
 

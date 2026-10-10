@@ -52,3 +52,5 @@ The build creates `admin`, `dispatcher`, and `service_provider` role groups. Sig
 ## Local development
 
 For local use, continue with `.env.example` and `docker compose up -d db`; the existing discrete `POSTGRES_*` settings remain supported. Do not point a shared production database at local development commands except for the one-time administrator setup above.
+
+Before any future migration that adds a unique constraint to customer phones, run `python manage.py check_duplicate_customer_phones` against a protected, representative database copy. This read-only command exits with an error and lists only masked last-four identifiers when duplicates exist. Stop the migration process and resolve the records before proceeding. No phone uniqueness migration is included until this data gate has been satisfied.

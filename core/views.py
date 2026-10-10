@@ -662,6 +662,12 @@ def admin_business_detail(request, business_id):
                 latitude=locked_business.location.latitude,
                 longitude=locked_business.location.longitude,
             )
+            if CustomerBusiness.objects.filter(phone=business.phone).exclude(pk=business.pk).exists():
+                return error(
+                    "phone_in_use",
+                    "That phone number is already assigned to another business.",
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
             old_phone_hash = hash_value("provider-phone:" + original_phone)
             new_phone_hash = hash_value("provider-phone:" + business.phone)
             codes = list(
