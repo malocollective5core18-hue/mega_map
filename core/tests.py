@@ -70,6 +70,17 @@ class DuplicatePhoneCheckTests(TestCase):
         self.assertEqual(CustomerBusiness.objects.filter(phone="+255700000001").count(), 2)
 
 
+class DeploymentConfigurationTests(TestCase):
+    def test_render_blueprint_targets_production_branch(self):
+        from pathlib import Path
+        import re
+
+        render_config = (Path(__file__).resolve().parents[1] / "render.yaml").read_text()
+        branch = re.search(r"(?m)^\s{4}branch:\s*([^\s#]+)", render_config)
+        self.assertIsNotNone(branch)
+        self.assertEqual(branch.group(1), "production")
+
+
 class CustomerFlowTests(TestCase):
     def test_valid_code_submission_is_idempotent_and_single_use(self):
         code = "ABCD2345EFGH6789"

@@ -17,8 +17,8 @@ Supabase's connection methods and IP support are documented in its [Postgres con
 
 ## 2. Deploy the Render service
 
-1. Confirm the first project commit is on GitHub `main`.
-2. In Render, create a **Blueprint** from `malocollective5core18-hue/mega_map` and apply `render.yaml`. Select Singapore if Render asks for a region.
+1. The Blueprint targets the GitHub `production` branch. In the Render dashboard, confirm that the live service is configured to watch `production`; the repository cannot verify that live setting.
+2. In Render, create or update the **Blueprint** from `malocollective5core18-hue/mega_map` and apply `render.yaml`. Select Singapore if Render asks for a region.
 3. In the new web service's environment settings, set `DATABASE_URL` to the Supabase **Session pooler** URI. Render marks this value `sync: false`, so it is entered privately in the Render dashboard.
 4. Confirm `DJANGO_ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` match the exact Render hostname shown on the service. If using a custom domain, add its hostname and `https://` origin as comma-separated values.
 5. Deploy. The build applies Django migrations and initializes roles/cache; the start command runs one Gunicorn worker with four threads, suitable for the free instance's small memory limit.
