@@ -11,9 +11,17 @@ def populate_phone_hashes(apps, schema_editor):
     Business = apps.get_model("core", "CustomerBusiness")
     key = settings.SECRET_KEY.encode()
     alias = schema_editor.connection.alias
+    batch = []
     for business in Business.objects.using(alias).only("pk", "phone").iterator(chunk_size=500):
-        digest = hmac.new(key, ("provider-phone:" + business.phone).encode(), hashlib.sha256).hexdigest()
-        Business.objects.using(alias).filter(pk=business.pk).update(phone_hash=digest)
+        business.phone_hash = hmac.new(
+            key, ("provider-phone:" + business.phone).encode(), hashlib.sha256
+        ).hexdigest()
+        batch.append(business)
+        if len(batch) >= 500:
+            Business.objects.using(alias).bulk_update(batch, ["phone_hash"], batch_size=500)
+            batch.clear()
+    if batch:
+        Business.objects.using(alias).bulk_update(batch, ["phone_hash"], batch_size=500)
 
 
 class Migration(migrations.Migration):
