@@ -105,6 +105,31 @@ class DeploymentConfigurationTests(TestCase):
         self.assertEqual(branch.group(1), "production")
 
 
+class AccuracyLanguageTests(TestCase):
+    def test_customer_copy_does_not_promise_guaranteed_gps_accuracy(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        customer_copy = (root / "index.html").read_text().lower()
+        self.assertNotRegex(customer_copy, r"\b99\s*%")
+        self.assertIn("reported accuracy is an estimate, not a guarantee", customer_copy)
+        for path in (root / "SRS.md", root / "RELEASE" / "READINESS.md"):
+            text = path.read_text().lower()
+            # Prohibitions on guarantees are safe; affirmative promises are not.
+            self.assertNotRegex(text, r"(?:gps|location|accuracy).{0,80}(?:is|will be) guaranteed")
+
+
+class PublicAssetIntegrityTests(TestCase):
+    def test_public_leaflet_assets_are_pinned_and_integrity_protected(self):
+        from pathlib import Path
+
+        html = (Path(__file__).resolve().parents[1] / "index.html").read_text()
+        for asset in ("leaflet.css", "leaflet.js"):
+            tag = next((line for line in html.splitlines() if "leaflet@1.9.4" in line and asset.split(".")[0] in line), "")
+            self.assertIn("integrity=\"sha256-", tag)
+            self.assertIn("crossorigin", tag)
+
+
 class CustomerFlowTests(TestCase):
     def test_valid_code_submission_is_idempotent_and_single_use(self):
         code = "ABCD2345EFGH6789"
