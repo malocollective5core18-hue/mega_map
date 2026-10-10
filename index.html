@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="sw">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Share Office Location – Stocktaking Services</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.45;
+      --g: #0f3d2e;
+      --g2: #165a44;
+      --a: #f2a900;
+      --bg: #fff;
+      --tx: #14201b;
+      --mu: #5b6b64;
+      --ln: #d9e2de;
+      --er: #b3261e;
+      --r: 14px
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0
+    }
+
+    body {
+      font: inherit;
+      color: var(--tx);
+      background: #e8eeea;
+      overflow: hidden
+    }
+
+    #map {
+      position: absolute;
+      inset: 0;
+      z-index: 0
+    }
+
+    .bar {
+      position: absolute;
+      z-index: 500;
+      top: max(10px, env(safe-area-inset-top));
+      left: 10px;
+      right: 66px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: var(--bg);
+      border-radius: var(--r);
+      padding: 8px 10px;
+      box-shadow: 0 2px 10px #0003;
+      max-width: 640px
+    }
+
+    .logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: var(--g);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      flex: none
+    }
+
+    .logo svg {
+      width: 24px;
+      height: 24px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round
+    }
+
+    .brandBlock {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      flex: none
+    }
+
+    .brand {
+      font-size: 0.3rem;
+      line-height: 1;
+      color: var(--g);
+      white-space: nowrap
+    }
+
+    #sf {
+      display: flex;
+      flex: 1;
+      min-width: 0
+    }
+
+    #q {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid var(--ln);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 13px
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer
+    }
+
+    .btn {
+      min-height: 48px;
+      border: 0;
+      border-radius: 12px;
+      padding: 0 18px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--g);
+      color: #fff;
+      transition: background .15s, transform .1s
+    }
+
+    .btn:hover {
+      background: var(--g2)
+    }
+
+    .btn:active {
+      transform: scale(.98)
+    }
+
+    .btn.acc {
+      background: var(--g);
+      color: #ffffff
+    }
+
+    #menuToggle {
+      position: absolute;
+      z-index: 1100;
+      top: max(10px, env(safe-area-inset-top));
+      right: 10px;
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: #fff;
+      color: var(--g);
+      box-shadow: 0 2px 10px #0003;
+      font-size: 24px;
+      line-height: 1
+    }
+
+    #menuShade {
+      position: fixed;
+      z-index: 1190;
+      inset: 0;
+      border: 0;
+      background: #0006;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .2s, visibility .2s
+    }
+
+    #menuShade.open {
+      opacity: 1;
+      visibility: visible
+    }
+
+    #customMenu {
+      position: fixed;
+      z-index: 1200;
+      inset: 0 0 0 auto;
+      width: min(360px, 88vw);
+      padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+      background: #fff;
+      box-shadow: -4px 0 22px #0003;
+      transform: translateX(105%);
+      visibility: hidden;
+      transition: transform .22s, visibility .22s;
+      overflow-y: auto
+    }
+
+    #customMenu.open {
+      transform: none;
+      visibility: visible
+    }
+
+    #customMenu h2 {
+      margin: 0 54px 8px 0;
+      color: var(--g);
+      font-size: 18px;
+      font-weight: 750;
+      letter-spacing: -.3px
+    }
+
+    #customMenu p {
+      color: var(--mu);
+      font-size: 13px
+    }
+
+    .layerOption {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 48px;
+      margin: 8px 0;
+      padding: 8px 10px;
+      border: 1px solid var(--ln);
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 650
+    }
+
+    .layerOption input {
+      width: 20px;
+      height: 20px;
+      accent-color: var(--g)
+    }
+
+    #layerStatus {
+      min-height: 20px;
+      margin-top: 14px;
+      font-size: 11px
+    }
+
+    #menuClose {
+      position: absolute;
+      top: max(12px, env(safe-area-inset-top));
+      right: 14px;
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 50%;
+      background: #f0f4f2;
+      color: var(--g);
+      font-size: 24px
+    }
+
+    .btn.ghost {
+      background: #fff;
+      color: var(--g);
+      border: 1.5px solid var(--g)
+    }
+
+    .btn.sm {
+      min-height: 40px;
+      padding: 0 12px
+    }
+
+    .btn:disabled {
+      opacity: .55;
+      cursor: not-allowed
+    }
+
+    :focus-visible {
+      outline: 3px solid var(--a);
+      outline-offset: 2px
+    }
+
+    .ctl {
+      position: absolute;
+      z-index: 500;
+      right: 10px;
+      top: calc(max(10px, env(safe-area-inset-top)) + 70px);
+      display: flex;
+      flex-direction: column;
+      gap: 8px
+    }
+
+    .ctl button {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      border: 0;
+      background: #fff;
+      box-shadow: 0 2px 8px #0003;
+      font-size: 20px;
+      color: var(--g)
+    }
+
+    #dock {
+      position: absolute;
+      z-index: 500;
+      left: 50px;
+      right: 10px;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      max-width: 460px;
+      background: var(--bg);
+      border-radius: var(--r);
+      padding: 14px;
+      box-shadow: 0 -2px 14px #0003
+    }
+
+    #dock p {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: var(--mu)
+    }
+
+    #dock .row {
+      display: flex;
+      gap: 8px
+    }
+
+    #dock .row .btn {
+      flex: 1
+    }
+
+    #dock .big {
+      width: 100%;
+      margin-bottom: 8px
+    }
+
+    #sheet {
+      position: absolute;
+      z-index: 900;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      max-height: 62vh;
+      overflow: auto;
+      background: var(--bg);
+      border-radius: 18px 18px 0 0;
+      padding: 18px 16px max(16px, env(safe-area-inset-bottom));
+      box-shadow: 0 -4px 20px #0004;
+      transform: translateY(105%);
+      transition: transform .25s;
+      visibility: hidden
+    }
+
+    #sheet.open {
+      transform: none;
+      visibility: visible
+    }
+
+    #sheet h2 {
+      margin: 0 0 6px;
+      font-size: 18px;
+      font-weight: 750;
+      letter-spacing: -.3px;
+      color: var(--g)
+    }
+
+    .step {
+      display: none
+    }
+
+    .step.on {
+      display: block
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      margin: 12px 0 4px
+    }
+
+    label i {
+      color: var(--er);
+      font-style: normal
+    }
+
+    input.f {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--ln);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 13px
+    }
+
+    input.f[aria-invalid=true] {
+      border-color: var(--er)
+    }
+
+    input.f[readonly] {
+      color: var(--mu);
+      background: #f4f7f5
+    }
+
+    .err {
+      color: var(--er);
+      font-size: 12px;
+      min-height: 20px;
+      margin: 4px 0
+    }
+
+    .note {
+      font-size: 11px;
+      color: var(--mu);
+      margin: 8px 0
+    }
+
+    .place-search {
+      position: relative;
+      margin: 8px 0 12px
+    }
+
+    .place-search label {
+      margin-top: 0
+    }
+
+    #locationSearch {
+      width: 100%;
+      min-height: 40px;
+      padding: 8px 10px;
+      border: 1px solid var(--ln);
+      border-radius: 8px;
+      font: inherit;
+      font-size: 13px
+    }
+
+    #locationResults {
+      position: absolute;
+      z-index: 1400;
+      top: calc(100% + 3px);
+      left: 0;
+      right: 0;
+      max-height: 32vh;
+      overflow-y: auto;
+      border: 1px solid var(--ln);
+      border-radius: 9px;
+      background: #fff;
+      box-shadow: 0 8px 20px #14201b24
+    }
+
+    #locationResults[hidden] {
+      display: none
+    }
+
+    .place-result {
+      display: block;
+      width: 100%;
+      padding: 9px 11px;
+      border: 0;
+      border-bottom: 1px solid #edf1ef;
+      background: #fff;
+      color: var(--tx);
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.35
+    }
+
+    .place-result:hover,
+    .place-result:focus-visible {
+      background: #f1f7f3
+    }
+
+    .place-attribution {
+      margin: 6px 0;
+      color: var(--mu);
+      font-size: 10px
+    }
+
+    .warn {
+      background: #fff6dc;
+      border-left: 4px solid var(--a);
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin: 10px 0;
+      font-size: 12px
+    }
+
+    .demo {
+      background: #fde8e6;
+      color: #7a1510;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-bottom: 10px
+    }
+
+    .acts {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+      flex-wrap: wrap
+    }
+
+    .acts .btn {
+      flex: 1;
+      min-width: 110px
+    }
+
+    dl {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 4px 12px;
+      margin: 10px 0;
+      font-size: 12px
+    }
+
+    dt {
+      color: var(--mu)
+    }
+
+    dd {
+      margin: 0;
+      word-break: break-word
+    }
+
+    .spin {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #fff6;
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: s .8s linear infinite;
+      vertical-align: -3px;
+      margin-right: 6px
+    }
+
+    @keyframes s {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    .st {
+      color: var(--g);
+      font-weight: 700
+    }
+
+    a.lnk {
+      color: var(--g2)
+    }
+
+    @media(min-width:760px) {
+      #sheet {
+        left: 16px;
+        right: auto;
+        bottom: 16px;
+        width: 420px;
+        max-height: calc(100% - 32px);
+        border-radius: 18px
+      }
+
+      #dock {
+        left: 16px
+      }
+    }
+
+    @media(max-height:480px) and (orientation:landscape) {
+      #sheet {
+        max-height: 85vh;
+        width: min(420px, 60vw);
+        left: auto;
+        right: 0
+      }
+
+      #dock {
+        display: none
+      }
+    }
+
+    @media(prefers-reduced-motion:reduce) {
+      * {
+        transition: none !important;
+        animation: none !important
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map" aria-label="Map"></div>
+  <div id="mapfail" class="warn" hidden style="position:absolute;z-index:600;top:80px;left:10px;right:10px">Map could
+    not load. Check your internet connection and reload. You can still share your location below.</div>
+
+  <header class="bar">
+    <div class="brandBlock">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15m6-12v15"/></svg>
+      </div>
+      <span class="brand">mauzosheet, hotbano &amp; services</span>
+    </div>
+    <form id="sf" role="search"><input id="q" type="search" placeholder="Search address or area"
+        aria-label="Search address or area"></form>
+  </header>
+  <button id="menuToggle" type="button" aria-label="Open customization menu" aria-controls="customMenu" aria-expanded="false" title="Customizations">
+    <span aria-hidden="true">☰</span>
+  </button>
+  <button id="menuShade" type="button" aria-label="Close customization menu" tabindex="-1"></button>
+  <aside id="customMenu" role="dialog" aria-modal="true" aria-labelledby="customMenuTitle" aria-hidden="true">
+    <button id="menuClose" type="button" aria-label="Close menu">×</button>
+    <h2 id="customMenuTitle">Map layers</h2>
+    <label class="layerOption"><input id="shopsToggle" type="checkbox" checked> Shops we serve</label>
+    <label class="layerOption"><input id="demandToggle" type="checkbox" checked> Areas of demand</label>
+    <label class="layerOption"><input id="labelsToggle" type="checkbox" checked> Area and place labels</label>
+    <p class="note">Area and place labels may be incomplete.</p>
+    <p id="layerStatus" class="note" role="status" aria-live="polite"></p>
+  </aside>
+  <div class="ctl">
+    <button id="zin" aria-label="Zoom in">+</button>
+    <button id="zout" aria-label="Zoom out">−</button>
+    <button id="myloc" aria-label="Show my location" title="My location">◎</button>
+  </div>
+
+  <section id="dock" aria-label="About this service">
+    <p>We count stock at shops, businesses and offices. Share your exact business location so our team can find you
+      without getting lost. Nothing is sent until you confirm.</p>
+    <button id="share" class="btn acc big">SHARE OFFICE LOCATION</button>
+    <div class="row"><button id="supWa" class="btn ghost sm">WhatsApp support</button><button id="supCall"
+        class="btn ghost sm">Call office</button></div>
+  </section>
+
+  <div id="sheet" role="dialog" aria-modal="true" aria-labelledby="ttl" tabindex="-1">
+    <div id="demoBanner" class="demo" hidden><b>DEMO MODE:</b> nothing is verified, transmitted or saved. Not for
+      production.</div>
+    <p id="draftNotice" class="note" role="status" hidden></p>
+
+    <div class="step" data-s="code">
+      <h2 id="ttl">Enter your phone number and service code</h2>
+      <label for="codePhone">Customer phone number <i>*</i></label>
+      <input id="codePhone" class="f" type="tel" inputmode="tel" autocomplete="tel" aria-describedby="codePhoneErr">
+      <div id="codePhoneErr" class="err" role="alert"></div>
+      <label for="code">Service provider code <i>*</i></label>
+      <input id="code" class="f" autocomplete="off" autocapitalize="characters" spellcheck="false"
+        aria-describedby="codeErr">
+      <div id="codeErr" class="err" role="alert"></div>
+      <div class="acts"><button class="btn" id="codeGo">Continue</button><button class="btn ghost"
+          data-cancel>Cancel</button></div>
+      <p class="note"><a href="#" class="lnk" id="noCode">Don't have a service provider code?</a></p>
+    </div>
+
+    <div class="step" data-s="nocode">
+      <h2>Get a service provider code</h2>
+      <p>Contact our office and we will give you a code. Then come back and share your location.</p>
+      <div class="acts"><button class="btn" id="nwa">Contact Us on WhatsApp</button><button class="btn" id="ncall">Call
+          Our Office</button></div>
+      <div class="acts"><button class="btn ghost" data-back="code">Back</button><button class="btn ghost"
+          data-cancel>Cancel</button></div>
+    </div>
+
+    <div class="step" data-s="form">
+      <h2>Your details</h2>
+      <p class="note">We only ask what we need to reach you. Fields marked * are required.</p>
+      <label for="cn">Customer full name <i>*</i></label><input id="cn" class="f" autocomplete="name">
+      <div class="err" id="cnE" role="alert"></div>
+      <label for="bn">Business or shop name <i>*</i></label><input id="bn" class="f" autocomplete="organization">
+      <div class="err" id="bnE" role="alert"></div>
+      <label for="ph">Verified phone number <i>*</i></label><input id="ph" class="f" type="tel" inputmode="tel"
+        autocomplete="tel" placeholder="Phone number linked to your service code" readonly>
+      <p class="note">This number must match the one used with your service code. Contact the company if it needs to be changed.</p>
+      <div class="err" id="phE" role="alert"></div>
+      <div class="acts"><button class="btn ghost" data-back="code">Back</button><button class="btn"
+          id="formGo">Continue</button><button class="btn ghost" data-cancel>Cancel</button></div>
+    </div>
+
+    <div class="step" data-s="intro">
+      <h2>Eneo la biashara</h2>
+      <div class="warn"><b>Hakikisha upo eneo la ofisi au biashara yako ili uweze kutupatia location
+          sahihi.</b><br><span class="note">Make sure you are physically at your office or business so you can share the
+          correct location.</span></div>
+      <p class="note">For a better GPS reading, stand outside with a clear view of the sky and keep your phone still while it searches. The browser reports an estimated accuracy radius (95% confidence); it cannot guarantee an exact point or 99% accuracy.</p>
+      <div class="acts"><button class="btn" id="goLoc">Endelea</button><button class="btn ghost"
+          id="stop1">Sitisha</button></div>
+      <div class="acts"><button class="btn ghost sm" data-back="form">Back</button></div>
+    </div>
+
+    <div class="step" data-s="locate">
+      <h2>Confirm the pin</h2>
+      <div class="place-search">
+        <label for="locationSearch">Search for your area, street, landmark or bus stand</label>
+        <input id="locationSearch" type="search" autocomplete="off" placeholder="Start typing a place name…"
+          role="combobox" aria-autocomplete="list" aria-controls="locationResults" aria-expanded="false">
+        <div id="locationResults" role="listbox" aria-label="Matching places" hidden></div>
+        <p class="place-attribution">Place suggestions by <a class="lnk" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> via Photon. Your search text is sent to Photon to find matching places.</p>
+      </div>
+      <p class="note">Choose a suggestion to move the pin, then zoom in and place it on your exact business entrance.</p>
+      <p id="locSt" class="st" role="status"></p>
+      <div id="locErr" class="err" role="alert"></div>
+      <dl>
+        <dt>Latitude</dt>
+        <dd id="lat">–</dd>
+        <dt>Longitude</dt>
+        <dd id="lng">–</dd>
+        <dt>Accuracy</dt>
+        <dd id="acc">–</dd>
+        <dt>Place</dt>
+        <dd id="place">–</dd>
+      </dl>
+      <p class="note">Drag the pin or tap the map to adjust it to your business entrance. A GPS reading alone does not prove you are at the business, so check the pin yourself. The reported accuracy is an estimate, not a guarantee.</p>
+      <div class="acts"><button class="btn ghost" id="retry">Retry GPS</button><button class="btn" id="locGo"
+          disabled>Review</button><button class="btn ghost" id="stop2">Sitisha</button></div>
+    </div>
+
+    <div class="step" data-s="review">
+      <h2>Review</h2>
+      <dl>
+        <dt>Name</dt>
+        <dd id="rN"></dd>
+        <dt>Business</dt>
+        <dd id="rB"></dd>
+        <dt>Phone</dt>
+        <dd id="rP"></dd>
+        <dt>Latitude</dt>
+        <dd id="rLa"></dd>
+        <dt>Longitude</dt>
+        <dd id="rLo"></dd>
+        <dt>Selected place</dt>
+        <dd id="rPlace"></dd>
+        <dt>Accuracy</dt>
+        <dd id="rAc"></dd>
+      </dl>
+      <p class="note">The pin on the map behind this panel shows the selected location.</p>
+      <p class="note">By continuing you agree that your name, phone number and location are sent to the company only to
+        find and serve your business. Data is not shown publicly.</p>
+      <label class="layerOption" for="publicListing"><input id="publicListing" type="checkbox"> I agree that, after we have served my business, its business name and approximate area may appear on the public map.</label>
+      <p><b>Je, unathibitisha kuwa hii ndiyo location sahihi ya biashara yako?</b></p>
+      <div id="subErr" class="err" role="alert"></div>
+      <div class="acts"><button class="btn acc" id="send">Thibitisha na Tuma</button><button class="btn ghost"
+          id="fix">Rudi Urekebishe</button><button class="btn ghost" id="editDetails">Edit details</button><button class="btn ghost" id="stop3">Sitisha</button></div>
+    </div>
+
+    <div class="step" data-s="done">
+      <h2 id="doneT">Location yako imetumwa kwa mafanikio!</h2>
+      <p id="doneP">Timu yetu inaweza kutumia taarifa hizi kukusaidia kufikiwa kwa urahisi.</p>
+      <dl>
+        <dt>Business</dt>
+        <dd id="dB"></dd>
+        <dt>Reference</dt>
+        <dd id="dRef">–</dd>
+      </dl>
+      <div class="acts"><button class="btn" id="done">Done</button><button class="btn ghost" id="dwa">WhatsApp
+          support</button></div>
+    </div>
+
+    <div class="step" data-s="stop">
+      <h2>Sitisha?</h2>
+      <p>Taarifa ulizoingiza hazitatumwa na zitafutwa. / Nothing will be sent and your entries will be cleared.</p>
+      <div class="acts"><button class="btn" id="stopYes">Ndiyo, sitisha</button><button class="btn ghost"
+          id="stopNo">Endelea</button></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script>
+    "use strict";
+    /* ================= CONFIGURATION (edit here only) =================
+     * VERIFY_PROVIDER_CODE_ENDPOINT  POST  {code}
+     *   200 -> {valid:true, verificationToken:"opaque, short-lived, server-issued"}
+     *   200 -> {valid:false}  | 401/403 unauthorized | 410 expired
+     * SUBMIT_LOCATION_ENDPOINT  POST (Authorization: Bearer verificationToken)
+     *   body: {customerName, businessName, phone, latitude, longitude, accuracyMeters|null,
+     *          clientTimestamp(ISO), consent:true, confirmed:true}
+     *   201 -> {accepted:true, reference:"server-assigned id"}
+     *   401/403 session invalid | 410 expired | 409 duplicate | 422 invalid | 5xx server error
+     * The server must verify the code, authorize the token, validate fields, and assign the id. */
+    const API_BASE_URL = "";                       // e.g. "https://api.example.co.tz"
+    const VERIFY_PROVIDER_CODE_ENDPOINT = "/api/provider-codes/verify";
+    const SUBMIT_LOCATION_ENDPOINT = "/api/location-submissions";
+    let COMPANY_WHATSAPP_NUMBER = "";               // loaded from /api/public/config
+    let COMPANY_PHONE_NUMBER = "";                  // loaded from /api/public/config
+    const DEFAULT_MAP_CENTER = [-6.7924, 39.2083]; // Dar es Salaam
+    const DEMO_MODE = false;
+    const REQUEST_TIMEOUT_MS = 12000, GPS_TIMEOUT_MS = 20000;
+    const GPS_ACQUIRE_MS = 30000, GPS_TARGET_ACCURACY_M = 30;
+    /* =================================================================== */
+
+    const $ = id => document.getElementById(id);
+    const st = { step: null, token: null, code: "", verificationExpiresAt: null, d: { name: "", biz: "", phone: "" }, pos: null, busy: false, gpsId: 0, gpsWatch: null, gpsTimer: null, gpsBest: null, idempotencyKey: null, sent: false, ref: null, lastFocus: null };
+    const DRAFT_KEY = "mauzosheet.customerSubmissionDraft.v1";
+    let map, marker, mapOk = false, satL, labelL, shopsLayer, demandLayer, searchLayer, shopsRequest = 0, demandRequest = 0;
+    let placeSearchTimer = null, placeSearchController = null, placeSearchSequence = 0;
+
+    function setMenuOpen(open) {
+      const menu = $("customMenu"), toggle = $("menuToggle");
+      menu.classList.toggle("open", open);
+      $("menuShade").classList.toggle("open", open);
+      menu.setAttribute("aria-hidden", String(!open));
+      toggle.setAttribute("aria-expanded", String(open));
+      if (open) $("menuClose").focus(); else toggle.focus();
+    }
+    $("menuToggle").addEventListener("click", () => setMenuOpen(true));
+    $("menuClose").addEventListener("click", () => setMenuOpen(false));
+    $("menuShade").addEventListener("click", () => setMenuOpen(false));
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape" && $("customMenu").classList.contains("open")) setMenuOpen(false);
+    });
+
+    /* ---------- map ---------- */
+    function initMap() {
+      if (!window.L) { $("mapfail").hidden = false; return; }
+      mapOk = true;
+      map = L.map("map", { zoomControl: false }).setView(DEFAULT_MAP_CENTER, 12);
+      shopsLayer = L.layerGroup().addTo(map);
+      demandLayer = L.layerGroup().addTo(map);
+      searchLayer = L.layerGroup().addTo(map);
+      satL = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics" })
+        .on("tileerror", () => { $("mapfail").hidden = false }).addTo(map);
+      labelL = L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19, attribution: "Labels &copy; Esri"
+      }).on("tileerror", () => setLayerStatus("Area labels could not load. The satellite map is still available.")).addTo(map);
+      addEventListener("resize", () => map.invalidateSize());
+      map.on("moveend", loadPublicLayers);
+      loadPublicLayers();
+    }
+    async function loadPublicLayers() {
+      if (!mapOk) return;
+      const b = map.getBounds(), bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(",");
+      const jobs = [];
+      if ($("shopsToggle").checked) jobs.push(loadShops(bbox)); else shopsLayer.clearLayers();
+      if ($("demandToggle").checked) jobs.push(loadDemand(bbox)); else demandLayer.clearLayers();
+      await Promise.all(jobs);
+    }
+    function publicItems(payload) { return Array.isArray(payload?.items) ? payload.items : []; }
+    async function loadPublicConfig() {
+      try {
+        const r = await fetchT(api("/api/public/config"));
+        if (!r.ok) return;
+        const config = await r.json();
+        if (typeof config.whatsappNumber === "string") COMPANY_WHATSAPP_NUMBER = config.whatsappNumber;
+        if (typeof config.phoneNumber === "string") COMPANY_PHONE_NUMBER = config.phoneNumber;
+      } catch { /* Support actions report that contact details are not configured. */ }
+    }
+    async function loadShops(bbox) {
+      const request = ++shopsRequest;
+      try {
+        const r = await fetchT(api("/api/public/shops?bbox=" + encodeURIComponent(bbox) + "&limit=500"));
+        if (!r.ok) throw new Error("shops");
+        const data = await r.json(); if (request !== shopsRequest) return;
+        shopsLayer.clearLayers();
+        publicItems(data).slice(0, 500).forEach(item => {
+          const lat = Number(item.lat), lng = Number(item.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+          const pin = L.circleMarker([lat, lng], { radius: 7, color: "#fff", weight: 2, fillColor: "#0f3d2e", fillOpacity: 1 });
+          const popup = document.createElement("div"), name = document.createElement("strong"), area = document.createElement("div");
+          name.textContent = String(item.name || "Served business"); area.textContent = String(item.area || "");
+          popup.append(name, area); pin.bindPopup(popup).addTo(shopsLayer);
+        });
+      } catch {
+        if (request === shopsRequest) setLayerStatus("Shops layer could not load. Check your connection and try moving the map.");
+      }
+    }
+    async function loadDemand(bbox) {
+      const request = ++demandRequest;
+      try {
+        const r = await fetchT(api("/api/public/demand-cells?bbox=" + encodeURIComponent(bbox)));
+        if (!r.ok) throw new Error("demand");
+        const data = await r.json(); if (request !== demandRequest) return;
+        demandLayer.clearLayers();
+        publicItems(data).forEach(cell => {
+          if (!cell.geojson) return;
+          const feature = cell.geojson.type === "Feature" ? cell.geojson : { type: "Feature", properties: {}, geometry: cell.geojson };
+          const area = L.geoJSON(feature, { style: { color: "#f2a900", weight: 1, fillColor: "#f2a900", fillOpacity: .28 } });
+          const popup = document.createElement("div"); popup.textContent = "Several businesses here have asked for our service";
+          area.bindPopup(popup).addTo(demandLayer);
+        });
+      } catch {
+        if (request === demandRequest) setLayerStatus("Demand areas could not load. Check your connection and try moving the map.");
+      }
+    }
+    function setLayerStatus(message) { $("layerStatus").textContent = message; }
+    $("shopsToggle").addEventListener("change", loadPublicLayers);
+    $("demandToggle").addEventListener("change", loadPublicLayers);
+    $("labelsToggle").addEventListener("change", () => toggleMapLayer(labelL, $("labelsToggle").checked));
+    function toggleMapLayer(layer, visible) {
+      if (!mapOk || !layer) return;
+      if (visible) layer.addTo(map); else map.removeLayer(layer);
+    }
+    function updateSelectedMapLocation(lat, lng, acc, zoom, placeLabel = "") {
+      // The API stores coordinates to six decimal places and GPS accuracy to two.
+      // Keep the sent values at the same precision shown in the review panel.
+      lat = Number(Number(lat).toFixed(6)); lng = Number(Number(lng).toFixed(6));
+      acc = acc == null ? null : Number(Number(acc).toFixed(2));
+      if (st.pos && (st.pos.lat !== lat || st.pos.lng !== lng)) st.idempotencyKey = null;
+      st.pos = { lat, lng, acc: acc ?? null, place: placeLabel || (acc == null ? "Manually adjusted map pin" : "GPS location") };
+      $("lat").textContent = lat.toFixed(6); $("lng").textContent = lng.toFixed(6);
+      $("acc").textContent = acc != null ? "about " + Math.round(acc) + " m" : "not reported";
+      $("place").textContent = placeLabel || (acc != null ? "GPS location — check the pin" : "Manually adjusted map pin");
+      $("locGo").disabled = false;
+      saveWorkflowDraft();
+      if (!mapOk) return;
+      if (!marker) {
+        marker = L.marker([lat, lng], { draggable: true, title: "Business location" }).addTo(map);
+        marker.on("dragend", () => { ++st.gpsId; stopGpsAcquisition(); const p = marker.getLatLng(); updateSelectedMapLocation(p.lat, p.lng, null, undefined, "Manually adjusted map pin") });
+      } else marker.setLatLng([lat, lng]);
+      if (zoom) map.setView([lat, lng], zoom);
+    }
+
+    function hidePlaceResults() {
+      const results = $("locationResults");
+      results.hidden = true;
+      $("locationSearch").setAttribute("aria-expanded", "false");
+    }
+    function placeName(properties) {
+      const street = [properties.housenumber, properties.street].filter(Boolean).join(" ");
+      const locality = properties.suburb || properties.district || properties.city_district || properties.city || properties.county || properties.state;
+      return [...new Set([properties.name, street, locality, properties.country].filter(Boolean).map(String))].join(", ");
+    }
+    function renderPlaceResults(message, features = []) {
+      const results = $("locationResults"), input = $("locationSearch");
+      results.replaceChildren();
+      results.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      if (!features.length) {
+        const empty = document.createElement("div"); empty.className = "place-result"; empty.textContent = message; results.append(empty); return;
+      }
+      features.forEach(feature => {
+        const coordinates = feature?.geometry?.coordinates, label = placeName(feature?.properties || {});
+        if (!label || !Array.isArray(coordinates) || !Number.isFinite(Number(coordinates[0])) || !Number.isFinite(Number(coordinates[1]))) return;
+        const option = document.createElement("button"); option.type = "button"; option.className = "place-result"; option.setAttribute("role", "option"); option.textContent = label;
+        option.addEventListener("click", () => {
+          const lng = Number(coordinates[0]), lat = Number(coordinates[1]);
+          input.value = label; hidePlaceResults(); ++st.gpsId; stopGpsAcquisition(); $("retry").disabled = false;
+          $("locSt").textContent = "Place selected. Zoom in and confirm the pin is on your exact business entrance.";
+          updateSelectedMapLocation(lat, lng, null, 17, label);
+        });
+        results.append(option);
+      });
+      if (!results.children.length) renderPlaceResults("No matching places found.");
+    }
+    async function searchPlaces(query) {
+      const sequence = ++placeSearchSequence;
+      placeSearchController?.abort();
+      const controller = new AbortController();
+      placeSearchController = controller;
+      renderPlaceResults("Searching places…");
+      const params = new URLSearchParams({ q: query, countrycode: "TZ", lang: "en", limit: "6" });
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const response = await fetch("https://photon.komoot.io/api/?" + params, { signal: controller.signal, headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error("Place search failed");
+        const data = await response.json();
+        if (sequence !== placeSearchSequence) return;
+        renderPlaceResults("No matching places found. Try another area or landmark.", Array.isArray(data.features) ? data.features : []);
+      } catch {
+        if (sequence === placeSearchSequence) renderPlaceResults("Place search is unavailable. You can still tap the map to set the pin.");
+      } finally { clearTimeout(timeout) }
+    }
+    $("locationSearch").addEventListener("input", () => {
+      clearTimeout(placeSearchTimer);
+      const query = $("locationSearch").value.trim();
+      ++placeSearchSequence; placeSearchController?.abort();
+      if (query.length < 3) { hidePlaceResults(); return }
+      placeSearchTimer = setTimeout(() => searchPlaces(query), 750);
+    });
+    $("locationSearch").addEventListener("keydown", event => { if (event.key === "Escape") hidePlaceResults() });
+
+    /* ---------- helpers ---------- */
+    function fetchT(url, opt = {}) {
+      const c = new AbortController(), t = setTimeout(() => c.abort(), REQUEST_TIMEOUT_MS);
+      return fetch(url, { ...opt, signal: c.signal }).finally(() => clearTimeout(t));
+    }
+    const api = p => API_BASE_URL.replace(/\/$/, "") + p;
+    function setBusy(btn, on, label) { st.busy = on; btn.disabled = on; if (on) { btn.dataset.l = btn.textContent; btn.innerHTML = '<span class="spin"></span>' + label } else if (btn.dataset.l) btn.textContent = btn.dataset.l; }
+    function showErrorMessage(id, msg) { $(id).textContent = msg || ""; }
+    function waLink(msg) { return COMPANY_WHATSAPP_NUMBER ? `https://wa.me/${COMPANY_WHATSAPP_NUMBER.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}` : null; }
+    function openWa(msg) { const u = waLink(msg); if (u) window.open(u, "_blank", "noopener"); else alert("WhatsApp number is not configured yet (COMPANY_WHATSAPP_NUMBER)."); }
+    function callOffice() { if (COMPANY_PHONE_NUMBER) location.href = "tel:" + COMPANY_PHONE_NUMBER.replace(/[^\d+]/g, ""); else alert("Office phone number is not configured yet (COMPANY_PHONE_NUMBER)."); }
+    const CODE_MSG = "Hello, I need a service provider code to share my business location for stocktaking services.";
+
+    /* ---------- workflow state machine ---------- */
+    function stopGpsAcquisition() {
+      if (st.gpsTimer != null) clearTimeout(st.gpsTimer);
+      st.gpsTimer = null;
+      if (st.gpsWatch != null && navigator.geolocation) navigator.geolocation.clearWatch(st.gpsWatch);
+      st.gpsWatch = null;
+    }
+    function clearSavedDraft() {
+      try { sessionStorage.removeItem(DRAFT_KEY) } catch { /* Storage can be disabled by the browser. */ }
+    }
+    function saveWorkflowDraft() {
+      if (!st.token || st.sent) { clearSavedDraft(); return }
+      const expiresAt = Date.parse(st.verificationExpiresAt || "");
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) { clearSavedDraft(); return }
+      const draft = {
+        token: st.token, expiresAt, step: st.step, name: $("cn").value, biz: $("bn").value,
+        phone: st.d.phone, pos: st.pos, idempotencyKey: st.idempotencyKey,
+        publicListing: $("publicListing").checked
+      };
+      try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft)) } catch { /* Continue normally if storage is unavailable. */ }
+    }
+    function restoreWorkflowDraft() {
+      let draft;
+      try { draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null") } catch { clearSavedDraft(); return }
+      if (!draft) return;
+      if (typeof draft.token !== "string" || !draft.token || !Number.isFinite(draft.expiresAt) || draft.expiresAt <= Date.now()) {
+        clearSavedDraft(); return;
+      }
+      const allowed = new Set(["form", "intro", "locate", "review"]);
+      st.token = draft.token;
+      st.verificationExpiresAt = new Date(draft.expiresAt).toISOString();
+      st.d = { name: String(draft.name || ""), biz: String(draft.biz || ""), phone: String(draft.phone || "") };
+      st.pos = draft.pos && Number.isFinite(draft.pos.lat) && Number.isFinite(draft.pos.lng) ? draft.pos : null;
+      st.idempotencyKey = typeof draft.idempotencyKey === "string" ? draft.idempotencyKey : null;
+      $("cn").value = st.d.name; $("bn").value = st.d.biz; $("ph").value = st.d.phone;
+      $("ph").readOnly = Boolean(st.d.phone);
+      $("publicListing").checked = draft.publicListing === true;
+      if (st.pos) {
+        const p = st.pos;
+        updateSelectedMapLocation(p.lat, p.lng, p.acc, 16, p.place || "");
+        if (p.place && !["GPS location", "Manually adjusted map pin", "Manually placed map pin"].includes(p.place)) $("locationSearch").value = p.place;
+      }
+      const savedStep = allowed.has(draft.step) ? draft.step : (st.pos ? "review" : "form");
+      if (savedStep === "review" && st.pos) showLocationConfirmation(); else goStep(savedStep);
+      $("draftNotice").textContent = "Your in-progress details were restored. This draft is available in this tab until your verified session expires.";
+      $("draftNotice").hidden = false;
+      document.activeElement?.blur?.();
+      $("dock").inert = true; document.querySelector(".bar").inert = true; document.querySelector(".ctl").inert = true;
+    }
+    function goStep(s) {
+      if (st.step === "locate" && s !== "locate") { ++st.gpsId; stopGpsAcquisition(); }
+      st.step = s;
+      document.querySelectorAll(".step").forEach(e => e.classList.toggle("on", e.dataset.s === s));
+      const sh = $("sheet"); sh.classList.add("open"); sh.scrollTop = 0;
+      const f = sh.querySelector(`.step[data-s="${s}"] input,.step[data-s="${s}"] button`); f && f.focus({ preventScroll: true });
+      if (mapOk) setTimeout(() => map.invalidateSize(), 260);
+      saveWorkflowDraft();
+    }
+    function openLocationSharing() {
+      st.lastFocus = document.activeElement; $("demoBanner").hidden = !DEMO_MODE;
+      $("dock").inert = true; document.querySelector(".bar").inert = true; document.querySelector(".ctl").inert = true;
+      goStep("code");
+    }
+    function closeSheet() {
+      $("sheet").classList.remove("open");
+      for (const e of [$("dock"), document.querySelector(".bar"), document.querySelector(".ctl")]) e.inert = false;
+      st.lastFocus && st.lastFocus.focus();
+    }
+    function resetWorkflow() {
+      clearSavedDraft(); $("draftNotice").hidden = true;
+      st.gpsId++; stopGpsAcquisition(); if (st.watch != null) { navigator.geolocation.clearWatch(st.watch); st.watch = null }
+      Object.assign(st, { token: null, code: "", verificationExpiresAt: null, d: { name: "", biz: "", phone: "" }, pos: null, busy: false, idempotencyKey: null, sent: false, ref: null });
+      ["code", "codePhone", "cn", "bn", "ph"].forEach(i => $(i).value = "");
+      $("publicListing").checked = false;
+      if (marker) { map.removeLayer(marker); marker = null }
+      $("locGo").disabled = true;["lat", "lng", "acc", "place"].forEach(i => $(i).textContent = "–");
+      ["codeErr", "codePhoneErr", "cnE", "bnE", "phE", "locErr", "subErr"].forEach(i => showErrorMessage(i, ""));
+      closeSheet();
+    }
+
+    /* ---------- provider code ---------- */
+    async function verifyProviderCode() {
+      const code = $("code").value.trim().replace(/\s+/g, "").toUpperCase();
+      const phone = $("codePhone").value.trim().replace(/[\s\-().]/g, "");
+      const validPhone = /^0[1-9]\d{8}$|^(\+|00)?255[1-9]\d{8}$|^\+[1-9]\d{7,14}$/.test(phone);
+      if (!validPhone) { showErrorMessage("codePhoneErr", "Enter the customer phone number linked to this code."); return }
+      showErrorMessage("codePhoneErr", "");
+      if (code.length < 4) { showErrorMessage("codeErr", "Enter the full code you received from the company."); return }
+      const btn = $("codeGo"); setBusy(btn, true, "Checking…"); showErrorMessage("codeErr", "");
+      try {
+        let expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        if (DEMO_MODE) { await new Promise(r => setTimeout(r, 600)); st.token = "DEMO"; }
+        else {
+          const r = await fetchT(api(VERIFY_PROVIDER_CODE_ENDPOINT), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, phone }) });
+          if (r.status === 401 || r.status === 403) throw new Error("The request was blocked. Refresh this page and try again; contact the company if it continues.");
+          if (r.status === 410) throw new Error("This code has expired. Please request a new one.");
+          if (r.status === 429) throw new Error("Too many attempts. Please wait and try again.");
+          if (!r.ok) throw new Error("Server error. Please try again shortly.");
+          let j; try { j = await r.json() } catch { throw new Error("Unexpected server reply. Please try again.") }
+          if (j.valid !== true || typeof j.verificationToken !== "string") throw new Error("This code could not be verified. Check it and try again.");
+          st.token = j.verificationToken;
+          if (typeof j.expiresAt === "string" && Number.isFinite(Date.parse(j.expiresAt))) expiresAt = j.expiresAt;
+        }
+        st.verificationExpiresAt = expiresAt;
+        st.code = code; st.d.phone = phone; showCustomerForm();
+      } catch (e) {
+        showErrorMessage("codeErr", e.name === "AbortError" ? "Request timed out. Check your connection and retry." : (e instanceof TypeError ? "Network error. Check your connection and retry." : e.message));
+      } finally { setBusy(btn, false) }
+    }
+
+    /* ---------- customer form ---------- */
+    function showCustomerForm() { $("ph").value = st.d.phone || ""; $("ph").readOnly = Boolean(st.d.phone); goStep("form"); }
+    function validateCustomerDetails() {
+      const name = $("cn").value.trim(), biz = $("bn").value.trim(), ph = $("ph").value.trim().replace(/[\s\-().]/g, "");
+      let ok = true;
+      const chk = (id, eid, bad, msg) => { $(id).setAttribute("aria-invalid", bad); showErrorMessage(eid, bad ? msg : ""); if (bad) ok = false };
+      chk("cn", "cnE", name.length < 2, "Enter your full name.");
+      chk("bn", "bnE", biz.length < 2, "Enter your business or shop name.");
+      // Tanzanian local (0 + 9 digits, e.g. 0712345678), +255/255 + 9 digits, or generic international +7–15 digits
+      const okPh = /^0[67]\d{8}$|^0[1-9]\d{8}$|^(\+|00)?255[1-9]\d{8}$|^\+[1-9]\d{7,14}$/.test(ph);
+      chk("ph", "phE", !okPh, "Enter a valid phone number, e.g. 0712 345 678 or +255712345678.");
+      if (ok) st.d = { name, biz, phone: ph };
+      return ok;
+    }
+
+    /* ---------- geolocation ---------- */
+    function requestCurrentLocation() {
+      stopGpsAcquisition();
+      clearTimeout(placeSearchTimer); ++placeSearchSequence; placeSearchController?.abort();
+      $("locationSearch").value = ""; hidePlaceResults();
+      const id = ++st.gpsId; st.gpsBest = null; showErrorMessage("locErr", ""); goStep("locate");
+      if (!("geolocation" in navigator)) { $("locSt").textContent = ""; showErrorMessage("locErr", "This browser cannot get your location. Tap the map to place the pin manually."); return; }
+      if (!window.isSecureContext) { $("retry").disabled = false; $("locSt").textContent = ""; showErrorMessage("locErr", "GPS requires a secure HTTPS connection. You can place the pin on the map instead."); return; }
+      $("locSt").innerHTML = '<span class="spin" style="border-color:#0f3d2e55;border-top-color:#0f3d2e"></span>Finding GPS location… keep the phone still and in an open area.'; $("retry").disabled = true;
+      const finish = () => {
+        if (id !== st.gpsId) return;
+        ++st.gpsId;
+        stopGpsAcquisition(); $("retry").disabled = false;
+        if (!st.gpsBest) {
+          $("locSt").textContent = "";
+          showErrorMessage("locErr", "No GPS fix was received. Move outdoors, check location permission, then retry or place the pin on the map.");
+          return;
+        }
+        const best = st.gpsBest, accuracy = Math.round(best.acc);
+        $("locSt").textContent = best.acc <= GPS_TARGET_ACCURACY_M
+          ? `Best reported GPS accuracy: about ${accuracy} m. Check the pin at your business entrance.`
+          : `Best reading is about ${accuracy} m accuracy. A better fix was not available; check and adjust the pin carefully.`;
+        updateSelectedMapLocation(best.lat, best.lng, best.acc, 18);
+      };
+      st.gpsTimer = setTimeout(finish, GPS_ACQUIRE_MS);
+      st.gpsWatch = navigator.geolocation.watchPosition(p => {
+        if (id !== st.gpsId) return;
+        const { latitude: lat, longitude: lng, accuracy } = p.coords;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(accuracy) || accuracy < 0 || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+        if (!st.gpsBest || accuracy < st.gpsBest.acc) {
+          st.gpsBest = { lat, lng, acc: accuracy };
+          $("locSt").textContent = `Improving GPS estimate… best so far: about ${Math.round(accuracy)} m.`;
+        }
+        if (accuracy <= GPS_TARGET_ACCURACY_M) finish();
+      }, e => {
+        if (id !== st.gpsId || e.code !== 1) return;
+        if (st.gpsBest) { finish(); return; }
+        ++st.gpsId; stopGpsAcquisition(); $("retry").disabled = false; $("locSt").textContent = "";
+        showErrorMessage("locErr", "Location permission was denied. Allow location in your browser settings and retry, or tap the map to place the pin.");
+      }, { enableHighAccuracy: true, timeout: GPS_ACQUIRE_MS, maximumAge: 0 });
+    }
+    function showLocationConfirmation() {
+      const p = st.pos, d = st.d; if (!p) return;
+      hidePlaceResults();
+      $("rN").textContent = d.name; $("rB").textContent = d.biz; $("rP").textContent = d.phone;
+      $("rLa").textContent = p.lat.toFixed(6); $("rLo").textContent = p.lng.toFixed(6);
+      $("rPlace").textContent = p.place || "Selected map location";
+      $("rAc").textContent = p.acc != null ? "about " + Math.round(p.acc) + " m" : "manually adjusted / not reported";
+      showErrorMessage("subErr", ""); goStep("review");
+    }
+
+    /* ---------- submission ---------- */
+    async function submitLocationRequest() {
+      if (st.busy || st.sent || !st.pos) return;
+      const btn = $("send"); setBusy(btn, true, "Inapotuma…"); showErrorMessage("subErr", "");
+      const payload = {
+        customerName: st.d.name, businessName: st.d.biz, phone: st.d.phone, latitude: st.pos.lat, longitude: st.pos.lng,
+        accuracyMeters: st.pos.acc, clientTimestamp: new Date().toISOString(), consent: true, confirmed: true,
+        publicListing: $("publicListing").checked
+      };
+      try {
+        if (DEMO_MODE) { await new Promise(r => setTimeout(r, 700)); st.sent = true; clearSavedDraft(); showSuccessScreen(null); return; }
+        if (!st.idempotencyKey) st.idempotencyKey = globalThis.crypto?.randomUUID?.() || (Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+        saveWorkflowDraft();
+        const r = await fetchT(api(SUBMIT_LOCATION_ENDPOINT), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + st.token, "Idempotency-Key": st.idempotencyKey }, body: JSON.stringify(payload) });
+        if (r.status === 401 || r.status === 403) { clearSavedDraft(); throw new Error("Your session is not authorized. Please start again."); }
+        if (r.status === 410) { clearSavedDraft(); throw new Error("Your session expired. Please start again with your code."); }
+        if (r.status === 409) { st.sent = true; clearSavedDraft(); showSuccessScreen(null, true); return; }
+        if (r.status === 422) {
+          const problem = await r.json().catch(() => ({}));
+          if (problem?.error?.code === "phone_code_mismatch") throw new Error("This phone number does not match the number linked to your service code. Go back and use the verified number.");
+          const labels = { customerName: "Name", businessName: "Business name", phone: "Phone", latitude: "Latitude", longitude: "Longitude", accuracyMeters: "GPS accuracy", consent: "Consent", confirmed: "Location confirmation", publicListing: "Public map choice", non_field_errors: "Details" };
+          const details = problem?.error?.details;
+          if (details && typeof details === "object") {
+            const messages = Object.entries(details).flatMap(([field, errors]) => (Array.isArray(errors) ? errors : [errors]).map(message => `${labels[field] || field}: ${String(message)}`));
+            if (messages.length) throw new Error(messages.join(" "));
+          }
+          throw new Error(problem?.error?.message || "The server rejected some details. Go back and check them.");
+        }
+        if (!r.ok) throw new Error("Server error. Your location was not saved. Please retry.");
+        let j; try { j = await r.json() } catch { throw new Error("Unexpected server reply. Please retry.") }
+        if (j.accepted !== true) throw new Error("The server did not accept the submission. Please retry.");
+        st.sent = true; clearSavedDraft(); showSuccessScreen(typeof j.reference === "string" ? j.reference : null);
+      } catch (e) {
+        showErrorMessage("subErr", e.name === "AbortError" ? "Request timed out. Not sent. Retry." : (e instanceof TypeError ? "Network error. Not sent. Retry." : e.message));
+      } finally { setBusy(btn, false); btn.disabled = st.sent; }
+    }
+    function showSuccessScreen(ref, dup) {
+      $("dB").textContent = st.d.biz;
+      if (DEMO_MODE) {
+        $("doneT").textContent = "Demo complete – nothing was sent";
+        $("doneP").textContent = "Demo mode: your location was NOT transmitted or saved. Set DEMO_MODE=false and connect a backend.";
+        $("dRef").textContent = "none (demo)";
+      } else {
+        $("doneT").textContent = "Location yako imetumwa kwa mafanikio!";
+        $("doneP").textContent = dup ? "Ombi hili lilikuwa tayari limepokelewa." : "Timu yetu inaweza kutumia taarifa hizi kukusaidia kufikiwa kwa urahisi.";
+        $("dRef").textContent = ref || "–";
+      }
+      goStep("done");
+    }
+
+    /* ---------- events ---------- */
+    $("share").onclick = openLocationSharing;
+    $("codeGo").onclick = verifyProviderCode;
+    $("code").addEventListener("keydown", e => { if (e.key === "Enter") verifyProviderCode() });
+    $("codePhone").addEventListener("keydown", e => { if (e.key === "Enter") verifyProviderCode() });
+    $("noCode").onclick = e => { e.preventDefault(); goStep("nocode") };
+    $("nwa").onclick = () => openWa(CODE_MSG); $("ncall").onclick = callOffice;
+    $("supWa").onclick = () => openWa("Hello, I need help sharing my business location."); $("dwa").onclick = $("supWa").onclick;
+    $("supCall").onclick = callOffice;
+    $("formGo").onclick = () => { if (validateCustomerDetails()) goStep("intro") };
+    ["cn", "bn"].forEach(id => $(id).addEventListener("input", saveWorkflowDraft));
+    $("publicListing").addEventListener("change", saveWorkflowDraft);
+    $("goLoc").onclick = requestCurrentLocation;
+    $("retry").onclick = requestCurrentLocation;
+    $("locGo").onclick = showLocationConfirmation;
+    $("send").onclick = submitLocationRequest;
+    $("fix").onclick = () => goStep("locate");
+    $("editDetails").onclick = () => goStep("form");
+    $("done").onclick = resetWorkflow;
+    ["stop1", "stop2", "stop3"].forEach(i => $(i).onclick = () => { st.prev = st.step; goStep("stop") });
+    document.querySelectorAll("[data-cancel]").forEach(b => b.onclick = resetWorkflow);
+    document.querySelectorAll("[data-back]").forEach(b => b.onclick = () => goStep(b.dataset.back));
+    $("stopYes").onclick = resetWorkflow; $("stopNo").onclick = () => goStep(st.prev || "intro");
+    document.addEventListener("keydown", e => {
+      if (!$("sheet").classList.contains("open")) return;
+      if (e.key === "Escape" && st.step !== "done" && !st.busy) { st.prev = st.step; goStep("stop") }
+      if (e.key === "Tab") { // keep focus inside dialog
+        const f = [...$("sheet").querySelectorAll(".step.on button:not(:disabled),.step.on input,.step.on a")];
+        if (!f.length) return; const a = f[0], z = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus() }
+        else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus() }
+      }
+    });
+    $("zin").onclick = () => mapOk && map.zoomIn(); $("zout").onclick = () => mapOk && map.zoomOut();
+    $("myloc").onclick = () => { // explicit user action; only moves the view, nothing is sent
+      if (!mapOk || !navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(p => {
+        const ll = [p.coords.latitude, p.coords.longitude]; map.setView(ll, 17);
+        L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).addTo(map);
+      }, () => alert("Could not get your location. Check browser permission."), { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS });
+    };
+    $("sf").addEventListener("submit", async e => { // search is separate from GPS; it only moves the view
+      e.preventDefault(); const q = $("q").value.trim(); if (!q || !mapOk) return;
+      searchLayer.clearLayers();
+      try {
+        const own = await fetchT(api("/api/public/shops/search?q=" + encodeURIComponent(q)));
+        if (own.ok) {
+          const results = publicItems(await own.json());
+          if (results.length) {
+            const first = results[0];
+            const lat = Number(first.lat), lng = Number(first.lng);
+            if (Number.isFinite(lat) && Number.isFinite(lng)) {
+              const pin = L.circleMarker([lat, lng], { radius: 9, color: "#fff", weight: 3, fillColor: "#f2a900", fillOpacity: 1 });
+              const popup = document.createElement("div"), name = document.createElement("strong"), area = document.createElement("div");
+              name.textContent = String(first.name || "Served business"); area.textContent = String(first.area || "");
+              popup.append(name, area); pin.bindPopup(popup).addTo(searchLayer); map.setView([lat, lng], 16); pin.openPopup(); return;
+            }
+          }
+        }
+        const r = await fetchT("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(q));
+        const j = await r.json(); if (j[0]) map.setView([+j[0].lat, +j[0].lon], 16); else alert("No results found.");
+      } catch { alert("Search is unavailable right now.") }
+    });
+    document.addEventListener("click", () => { });
+    void loadPublicConfig();
+    initMap();
+    if (mapOk) map.on("click", e => { if (st.step === "locate") { ++st.gpsId; stopGpsAcquisition(); $("retry").disabled = false; $("locSt").textContent = "Pin placed manually. Zoom in and confirm the business entrance."; updateSelectedMapLocation(e.latlng.lat, e.latlng.lng, null, undefined, "Manually placed map pin"); } });
+    restoreWorkflowDraft();
+  </script>
+</body>
+
+</html>

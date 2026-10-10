@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Staff sign in · Mauzosheet</title>
+  <style>
+    :root{font:16px system-ui,sans-serif;color:#172a24;background:#f3f6f3}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:1rem}.card{background:#fff;width:min(100%,26rem);padding:2rem;border-radius:1rem;box-shadow:0 12px 40px #163a2418}h1{font-size:1.35rem;margin:0 0 .3rem}p{color:#64736c;margin:.25rem 0 1.5rem}label{display:block;font-weight:650;margin:1rem 0 .35rem}input{width:100%;padding:.8rem;border:1px solid #c7d3cb;border-radius:.5rem;font:inherit}button{width:100%;margin-top:1.2rem;padding:.85rem;border:0;border-radius:.55rem;background:#0f3d2e;color:white;font:inherit;font-weight:700;cursor:pointer}#message{min-height:1.5rem;color:#9a3026}a{color:#0f3d2e}
+  </style>
+</head>
+<body>
+  <main class="card"><h1>Mauzosheet · Staff</h1><p>Sign in to manage customer locations and dispatch.</p>
+    <form id="login"><label for="username">Username</label><input id="username" name="username" autocomplete="username" required>
+      <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button>Sign in</button><p id="message" role="status" aria-live="polite"></p>
+    </form><a href="/">Back to public map</a>
+  </main>
+  <script>
+    const form=document.querySelector('#login'), message=document.querySelector('#message');
+    async function csrf(){const r=await fetch('/api/auth/csrf',{credentials:'same-origin'});return (await r.json()).csrfToken}
+    form.addEventListener('submit',async e=>{e.preventDefault();message.textContent='';try{const token=await csrf(),r=await fetch('/api/auth/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':token},body:JSON.stringify({username:form.username.value,password:form.password.value})}),d=await r.json();if(!r.ok)throw Error(d.error?.message||'Sign in failed.');location.href='/staff/'}catch(err){message.textContent=err.message||'Unable to connect. Try again.'}});
+  </script>
+</body>
+</html>
