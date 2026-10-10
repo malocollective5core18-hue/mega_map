@@ -17,10 +17,59 @@
     @media(max-width:520px){.customer-table th:nth-child(4),.customer-table td:nth-child(4){display:none}.customer-table th:nth-child(1){width:8%}.customer-table th:nth-child(3){width:47%}.customer-table th:nth-child(5){width:25%}.customer-table th:nth-child(7){width:20%}.directory-table th:nth-child(4),.directory-table td:nth-child(4),.directory-table th:nth-child(5),.directory-table td:nth-child(5){display:none}.directory-table th:nth-child(1){width:8%}.directory-table th:nth-child(3){width:43%}.directory-table th:nth-child(7){width:27%}.directory-table th:nth-child(8){width:22%}.directory-table th,.directory-table td{padding:5px 4px}.customer-table .business-title,.customer-table .business-subtitle{white-space:nowrap;line-height:1.2}.customer-table .action-cell{gap:3px}.customer-table .row-action,.directory-table .row-action{height:23px;padding:0 4px;font-size:9px}.directory-table .copy-location{height:22px;margin:3px 0 0;padding:0 5px;font-size:8px}}
     @media(max-width:380px){.drawer{height:55vh}.drawer-title strong{font-size:13px}.small-action{padding:0 7px;font-size:10px}}
     @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+    .header-actions{display:flex;align-items:center;gap:8px}
+    #themeToggle{display:grid;place-items:center;width:36px;height:36px;padding:0;color:#fff;background:#ffffff12;border:1px solid #ffffff50;border-radius:9px}
+    #themeToggle:hover{background:#ffffff24}
+    #themeToggle:focus-visible{outline:3px solid #86efac;outline-offset:2px}
+    #themeToggle svg{width:18px;height:18px}
+    #themeToggle .icon-sun{display:none}
+    body.dark-mode{--green:#15803d;--green-bright:#22c55e;--ink:#eaf1ec;--muted:#9aa69f;--line:#2c3630;--surface:#151b17;--canvas:#0d1310;color-scheme:dark}
+    body.dark-mode #themeToggle .icon-moon{display:none}
+    body.dark-mode #themeToggle .icon-sun{display:block}
+    body.dark-mode{background:var(--canvas);color:var(--ink)}
+    body.dark-mode header{background:#151b17;box-shadow:0 3px 14px #0008}
+    body.dark-mode .drawer,body.dark-mode .drag-handle,body.dark-mode #detail,body.dark-mode .workspace-card,body.dark-mode .sidebar{background:#151b17;border-color:#2c3630;color:var(--ink)}
+    body.dark-mode .drawer{box-shadow:0 -8px 32px #0008}
+    body.dark-mode .drag-handle,body.dark-mode .table-toolbar,body.dark-mode .pagination{border-color:#2c3630}
+    body.dark-mode .grabber{background:#526158}
+    body.dark-mode .chevron,body.dark-mode .detail-back,body.dark-mode .fields label,body.dark-mode .detail-meta,body.dark-mode .detail-coords,body.dark-mode .directory-coordinates{color:#bdc8c1}
+    body.dark-mode .table-toolbar,body.dark-mode .admin-tools{background:#111713}
+    body.dark-mode .search-box,body.dark-mode .filter-control select,body.dark-mode .fields input,body.dark-mode .fields select,body.dark-mode .fields textarea,body.dark-mode .code-form input{color:#eaf1ec;background:#1c2420;border-color:#354139}
+    body.dark-mode input::placeholder,body.dark-mode textarea::placeholder{color:#85928a}
+    body.dark-mode .data-table th{color:#bdc8c1;background:#1a221d;border-color:#354139}
+    body.dark-mode .data-table td{color:#d0d8d3;border-color:#2a332d}
+    body.dark-mode .data-table tbody tr:nth-child(even),body.dark-mode .data-table tbody tr:hover,body.dark-mode .data-table tbody tr[aria-selected=true]{background:#1a221d}
+    body.dark-mode .business-title,body.dark-mode .code-account,body.dark-mode .view-heading h2,body.dark-mode .detail-header h2,body.dark-mode .admin-tools h2{color:#f0f5f1}
+    body.dark-mode .side-link{color:#b7c2bb}
+    body.dark-mode .side-link:hover,body.dark-mode .side-link.active{color:#4ade80;background:#193022}
+    body.dark-mode .side-link span,body.dark-mode .sidebar-brand small{color:#92a097}
+    body.dark-mode .sidebar-brand,body.dark-mode .view-heading .eyebrow{color:#4ade80}
+    body.dark-mode .sidebar-foot{border-color:#2c3630}
+    body.dark-mode .small-action,body.dark-mode .edit-action,body.dark-mode .copy-location{color:#4ade80;background:#193022;border-color:#2c4b36}
+    body.dark-mode .page-btn,body.dark-mode .detail-back,body.dark-mode .secondary{color:#d2ddd6;background:#222c26;border-color:#3a463e}
+    body.dark-mode .navigate-action{color:#07130b;background:#4ade80;border-color:#4ade80}
+    body.dark-mode .code-result{background:#14251a;border-color:#285438}
+    body.dark-mode .code-result h3{color:#7de49a}
+    body.dark-mode .code-target,body.dark-mode .code-business{color:#b7c5bc}
+    body.dark-mode .issued-code code,body.dark-mode .copy-code{color:#eaf1ec;background:#1c2420;border-color:#3c7650}
+    body.dark-mode .notice{color:#ffaaa2}
+    body.dark-mode .status-submitted{color:#f7d879;background:#493b19}
+    body.dark-mode .status-reviewed{color:#9bcaff;background:#1d3850}
+    body.dark-mode .status-scheduled{color:#d0b4ff;background:#352650}
+    body.dark-mode .status-served,body.dark-mode .high{color:#85e6a1;background:#173c25}
+    body.dark-mode .status-rejected,body.dark-mode .status-duplicate,body.dark-mode .low{color:#ffaaa2;background:#48221f}
+    body.dark-mode .medium{color:#f7d879;background:#493b19}
+    .workspace-card{border-color:#d2ddd5;box-shadow:0 8px 28px #1b382411}
+    .data-table th{color:#35473b;background:#eaf1ec}
+    .data-table tbody tr:nth-child(even){background:#f6f9f7}
+    .data-table tbody tr:hover{background:#eaf6ed}
+    .view-heading .eyebrow{color:#08783b}
+    @media(max-width:520px){.header-actions{gap:5px}#themeToggle{width:34px;height:34px}}
   </style>
 </head>
 <body>
-  <header><button id="menuToggle" class="menu-trigger" type="button" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button><h1>Mauzosheet <span style="opacity:.72;font-weight:500">· Dispatch map</span></h1><button id="logout" type="button">Sign out</button></header>
+  <script>try{if(localStorage.getItem('mauzosheet-staff-theme')==='dark')document.body.classList.add('dark-mode')}catch{}</script>
+  <header><button id="menuToggle" class="menu-trigger" type="button" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button><h1>Mauzosheet <span style="opacity:.72;font-weight:500">· Dispatch map</span></h1><div class="header-actions"><button id="themeToggle" type="button" aria-label="Switch to dark theme" aria-pressed="false" title="Toggle dark theme"><svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button><button id="logout" type="button">Sign out</button></div></header>
   <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="Close navigation" hidden></button>
   <aside id="sidebar" class="sidebar" aria-label="Staff navigation" aria-hidden="true" inert><div class="sidebar-brand">Mauzosheet <small>STAFF WORKSPACE</small></div><nav>{% if not is_provider %}<button class="side-link active" type="button" data-view="mapView"><span>⌖</span> Customer map</button><button class="side-link" type="button" data-view="customersView"><span>♙</span> Registered customers</button>{% endif %}{% if is_admin or is_provider %}<button class="side-link" type="button" data-view="codesView"><span>▣</span> Customer keys</button>{% endif %}{% if is_admin %}<button class="side-link" type="button" data-view="auditView"><span>≋</span> Audit log</button><button class="side-link" type="button" data-view="exportView"><span>⇩</span> Data export</button>{% endif %}{% if is_superuser %}<button class="side-link" type="button" data-view="adminUsersView"><span>♙</span> Register admin users</button><button class="side-link" type="button" data-view="providerUsersView"><span>＋</span> Register service providers</button>{% endif %}</nav><div class="sidebar-foot">Private staff workspace</div></aside>
   <main id="mapView" {% if is_provider %}hidden{% endif %}>
@@ -52,11 +101,108 @@
     <section class="workspace-card"><form id="providerUserForm" class="code-form" data-role="service_provider"><label>Username<input name="username" autocomplete="off" required maxlength="150"></label><label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label><label>Temporary password<input name="password" type="password" autocomplete="new-password" required minlength="12"></label><button class="primary-action" type="submit">Create service provider</button><p class="form-hint" id="providerUserMessage" role="status"></p></form><div class="table-scroll"><table class="data-table"><thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th></tr></thead><tbody id="providerUserRows"><tr><td colspan="5" class="empty-state">Open this page to load accounts.</td></tr></tbody></table></div></section>
   </main>
   {% endif %}
+  <script>
+    (() => {
+      const form = document.querySelector('#new-code');
+      if (!form) return;
+      const result = document.querySelector('#codeResult');
+      const error = document.querySelector('#codeError');
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!form.reportValidity()) return;
+        const data = new FormData(form);
+        const expiry = new Date(data.get('expiresAt'));
+        if (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now()) {
+          error.textContent = 'Choose an expiry time in the future.';
+          form.elements.expiresAt.focus();
+          return;
+        }
+        const submit = form.querySelector('button[type="submit"]');
+        const oldLabel = submit.textContent;
+        submit.disabled = true;
+        submit.textContent = 'Generating…';
+        error.textContent = '';
+        try {
+          const csrfResponse = await fetch('/api/auth/csrf', { credentials: 'same-origin' });
+          const csrfData = await csrfResponse.json();
+          if (!csrfResponse.ok || !csrfData.csrfToken) throw new Error('Could not verify your staff session. Reload and sign in again.');
+          const response = await fetch('/api/admin/provider-codes', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfData.csrfToken },
+            body: JSON.stringify({
+              phone: data.get('phone'),
+              label: data.get('label'),
+              expiresAt: expiry.toISOString()
+            })
+          });
+          let created = {};
+          try { created = await response.json(); } catch { /* Show a concise fallback below for non-JSON server errors. */ }
+          if (!response.ok) throw new Error(created.error?.message || 'The key could not be created. Please try again.');
+          if (typeof created.code !== 'string' || typeof created.phone !== 'string') throw new Error('The server did not return the new key. Refresh the key list and try again.');
+
+          const title = document.createElement('h3');
+          title.textContent = 'Reusable customer key created — copy or share it now';
+          const details = document.createElement('p');
+          details.className = 'code-target';
+          details.textContent = `For ${created.phone}. This key is shown only once.`;
+          const actions = document.createElement('div');
+          actions.className = 'issued-code';
+          const key = document.createElement('code');
+          key.textContent = created.code;
+          const copy = document.createElement('button');
+          copy.className = 'copy-code';
+          copy.type = 'button';
+          copy.textContent = 'Copy key';
+          const share = document.createElement('button');
+          share.className = 'copy-code';
+          share.type = 'button';
+          share.textContent = 'Share key';
+          const status = document.createElement('p');
+          status.className = 'code-target';
+          status.setAttribute('role', 'status');
+          actions.append(key, copy, share);
+          result.replaceChildren(title, details, actions, status);
+          result.hidden = false;
+          copy.addEventListener('click', async () => {
+            try {
+              await navigator.clipboard.writeText(created.code);
+              copy.textContent = 'Copied';
+              status.textContent = 'Key copied to clipboard.';
+            } catch {
+              status.textContent = 'Copy is unavailable. Select the key text to copy it.';
+            }
+          });
+          share.addEventListener('click', async () => {
+            const message = `Mauzosheet customer key for ${created.phone}: ${created.code}`;
+            try {
+              if (navigator.share) await navigator.share({ title: 'Mauzosheet customer key', text: message });
+              else await navigator.clipboard.writeText(message);
+              status.textContent = navigator.share ? 'Share sheet opened.' : 'Phone number and key copied to clipboard.';
+            } catch (shareError) {
+              if (shareError.name !== 'AbortError') status.textContent = 'Sharing is unavailable. Copy the key and send it securely.';
+            }
+          });
+          form.reset();
+          window.dispatchEvent(new Event('provider-codes-updated'));
+        } catch (requestError) {
+          error.textContent = requestError.message || 'Unable to create the key. Check your connection and try again.';
+        } finally {
+          submit.disabled = false;
+          submit.textContent = oldLabel;
+        }
+      });
+    })();
+  </script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script>
   (()=>{
     const IS_ADMIN={{ is_admin|yesno:"true,false" }}, IS_PROVIDER={{ is_provider|yesno:"true,false" }}, IS_SUPERUSER={{ is_superuser|yesno:"true,false" }};
     const api='/api', rows=document.querySelector('#businessRows'), detail=document.querySelector('#detail'), tableView=document.querySelector('#tableView'), drawer=document.querySelector('#drawer'), dragHandle=document.querySelector('#dragHandle'), mapView=document.querySelector('#mapView'), sidebar=document.querySelector('#sidebar'), backdrop=document.querySelector('#sidebarBackdrop'), status=document.createElement('p'); status.id='status';
+    const themeToggle=document.querySelector('#themeToggle'), themeKey='mauzosheet-staff-theme';
+    function setTheme(dark){document.body.classList.toggle('dark-mode',dark);themeToggle.setAttribute('aria-pressed',String(dark));themeToggle.setAttribute('aria-label',dark?'Switch to light theme':'Switch to dark theme');themeToggle.title=dark?'Switch to light theme':'Switch to dark theme';try{localStorage.setItem(themeKey,dark?'dark':'light')}catch{}}
+    setTheme(document.body.classList.contains('dark-mode'));
+    themeToggle.addEventListener('click',()=>setTheme(!document.body.classList.contains('dark-mode')));
     let page=1, count=0, items=[], selected=null, csrf='';
     const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const map=L.map('map').setView([-6.8,39.25],11); L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles © Esri',maxZoom:19}).addTo(map); const markers=L.layerGroup().addTo(map);
@@ -84,6 +230,7 @@
     document.querySelector('#menuToggle').onclick=()=>{const open=!sidebar.classList.contains('is-open');sidebar.classList.toggle('is-open',open);sidebar.setAttribute('aria-hidden',String(!open));sidebar.inert=!open;backdrop.hidden=!open;document.querySelector('#menuToggle').setAttribute('aria-expanded',String(open))};backdrop.onclick=closeSidebar;sidebar.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>showView(b.dataset.view));
     document.querySelector('#refresh').onclick=()=>{page=1;load()};document.querySelector('#prevPage').onclick=()=>{if(page>1){page--;load()}};document.querySelector('#nextPage').onclick=()=>{if(page<Math.ceil(count/50)){page++;load()}};document.querySelector('#filter').onchange=()=>{page=1;load()};let debounce;document.querySelector('#search').oninput=()=>{clearTimeout(debounce);debounce=setTimeout(()=>{page=1;load()},250)};
     document.querySelector('#directoryRefresh').onclick=()=>{directoryPage=1;loadDirectory()};document.querySelector('#directoryPrev').onclick=()=>{if(directoryPage>1){directoryPage--;loadDirectory()}};document.querySelector('#directoryNext').onclick=()=>{if(directoryPage<Math.ceil(directoryCount/50)){directoryPage++;loadDirectory()}};let directoryDebounce;document.querySelector('#directorySearch').oninput=()=>{clearTimeout(directoryDebounce);directoryDebounce=setTimeout(()=>{directoryPage=1;loadDirectory()},250)};
+    window.addEventListener('provider-codes-updated',()=>{codesPage=1;loadProviderCodes()});
     const codeSearch=document.querySelector('#codeSearch');if(codeSearch){document.querySelector('#codeRefresh').onclick=()=>{codesPage=1;loadProviderCodes()};document.querySelector('#codePrev').onclick=()=>{if(codesPage>1){codesPage--;loadProviderCodes()}};document.querySelector('#codeNext').onclick=()=>{if(codesPage<Math.ceil(codesCount/50)){codesPage++;loadProviderCodes()}};document.querySelector('#codeStatus').onchange=()=>{codesPage=1;loadProviderCodes()};let codeDebounce;codeSearch.oninput=()=>{clearTimeout(codeDebounce);codeDebounce=setTimeout(()=>{codesPage=1;loadProviderCodes()},250)}}
     let dragStartY=0,dragStartHeight=0,dragged=false;dragHandle.addEventListener('pointerdown',e=>{dragStartY=e.clientY;dragStartHeight=drawer.getBoundingClientRect().height;dragged=false;drawer.classList.add('is-dragging');dragHandle.setPointerCapture(e.pointerId)});dragHandle.addEventListener('pointermove',e=>{if(!drawer.classList.contains('is-dragging'))return;const dy=dragStartY-e.clientY;if(Math.abs(dy)>5)dragged=true;drawer.classList.remove('is-collapsed');drawer.style.height=`${Math.max(58,Math.min(window.innerHeight*.88,dragStartHeight+dy))}px`});dragHandle.addEventListener('pointerup',()=>{if(!drawer.classList.contains('is-dragging'))return;drawer.classList.remove('is-dragging');const h=drawer.getBoundingClientRect().height;if(h<130){drawer.classList.add('is-collapsed');drawer.style.height='';dragHandle.setAttribute('aria-expanded','false');document.querySelector('#drawerChevron').textContent='⌃'}else{drawer.classList.remove('is-collapsed');drawer.style.height=h>window.innerHeight*.62?'86vh':'46vh';dragHandle.setAttribute('aria-expanded','true');document.querySelector('#drawerChevron').textContent='⌄'}});dragHandle.addEventListener('click',()=>{if(dragged){dragged=false;return}if(drawer.classList.contains('is-collapsed')){drawer.classList.remove('is-collapsed');drawer.style.height='46vh';dragHandle.setAttribute('aria-expanded','true');document.querySelector('#drawerChevron').textContent='⌄'}else{drawer.classList.add('is-collapsed');drawer.style.height='';dragHandle.setAttribute('aria-expanded','false');document.querySelector('#drawerChevron').textContent='⌃'}});dragHandle.addEventListener('keydown',e=>{if(e.key==='ArrowUp'||e.key==='End'){e.preventDefault();drawer.classList.remove('is-collapsed');drawer.style.height='86vh';dragHandle.setAttribute('aria-expanded','true')}if(e.key==='ArrowDown'||e.key==='Home'){e.preventDefault();drawer.classList.add('is-collapsed');drawer.style.height='';dragHandle.setAttribute('aria-expanded','false')}});
     document.querySelector('#logout').onclick=async()=>{try{await request('/auth/logout',{method:'POST'})}finally{location.href='/staff/'}};
@@ -92,7 +239,6 @@
     async function loadStaffUsers(){try{const d=await request('/admin/staff-users');for(const [role,id] of [['admin','#adminUserRows'],['service_provider','#providerUserRows']]){const body=document.querySelector(id);if(!body)continue;const matching=d.items.filter(x=>x.role===role);body.innerHTML=matching.map(x=>`<tr><td>${esc(x.username)}</td><td>${esc(x.email)}</td><td>${role==='admin'?'Admin assistant':'Service provider'}</td><td>${x.active?'Active':'Disabled'}</td><td>${esc(new Date(x.createdAt).toLocaleDateString())}</td></tr>`).join('')||'<tr><td colspan="5" class="empty-state">No accounts registered yet.</td></tr>'}}catch(e){for(const id of ['#adminUserRows','#providerUserRows']){const body=document.querySelector(id);if(body)body.innerHTML=`<tr><td colspan="5" class="empty-state">${esc(e.message)}</td></tr>`}}}
     document.querySelectorAll('#adminUserForm,#providerUserForm').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form),role=form.dataset.role,message=document.querySelector(role==='admin'?'#adminUserMessage':'#providerUserMessage');message.textContent='Creating account…';try{const d=await request('/admin/staff-users',{method:'POST',body:JSON.stringify({username:f.get('username'),email:f.get('email'),password:f.get('password'),role})});form.reset();message.textContent=`Created ${d.role==='admin'?'admin assistant':'service provider'} account: ${d.username}.`;await loadStaffUsers()}catch(err){message.textContent=err.message}});
     const refreshAudit=document.querySelector('#loadAudit');if(refreshAudit)refreshAudit.onclick=loadAudit;
-    const codeForm=document.querySelector('#new-code');if(codeForm)codeForm.onsubmit=async e=>{e.preventDefault();const f=new FormData(codeForm),result=document.querySelector('#codeResult'),error=document.querySelector('#codeError');error.textContent='';try{const d=await request('/admin/provider-codes',{method:'POST',body:JSON.stringify({phone:f.get('phone'),label:f.get('label'),expiresAt:new Date(f.get('expiresAt')).toISOString()})});result.hidden=false;result.innerHTML=`<h3>Reusable customer key created — copy it now</h3><p class="code-target">For customer phone ending in ${esc(d.phone.slice(-4))}. This code is shown only once.</p><div class="issued-code"><code id="issuedCode">${esc(d.code)}</code><button class="copy-code" id="copyIssuedCode" type="button">Copy code</button></div>`;document.querySelector('#copyIssuedCode').onclick=()=>navigator.clipboard?.writeText(d.code).then(()=>{document.querySelector('#copyIssuedCode').textContent='Copied'}).catch(()=>{document.querySelector('#copyIssuedCode').textContent='Copy unavailable'});codeForm.reset();codesPage=1;await loadProviderCodes()}catch(err){error.textContent=err.message}};
     request('/auth/csrf').then(x=>{csrf=x.csrfToken;if(IS_PROVIDER)showView('codesView');else load()}).catch(()=>{if(IS_PROVIDER)showView('codesView');else load()});
   })();
   </script>
