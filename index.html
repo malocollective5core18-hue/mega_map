@@ -20,7 +20,9 @@
       --ln: #d9e2de;
       --er: #b3261e;
       --r: 14px;
-      --page-footer-height: max(32px, calc(24px + env(safe-area-inset-bottom)))
+      --page-footer-height: max(32px, calc(24px + env(safe-area-inset-bottom)));
+      --visible-viewport-height: 100dvh;
+      --visible-viewport-bottom: 0px
     }
 
     * {
@@ -413,13 +415,16 @@
     }
 
     #sheet {
-      position: absolute;
+      position: fixed;
       z-index: 900;
       left: 0;
       right: 0;
-      bottom: 0;
-      max-height: 62vh;
+      bottom: var(--visible-viewport-bottom);
+      max-height: min(62vh, calc(var(--visible-viewport-height) - 12px));
       overflow: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      scroll-padding-block: 12px 20px;
       background: var(--bg);
       border-radius: 18px 18px 0 0;
       padding: 18px 16px max(16px, env(safe-area-inset-bottom));
@@ -470,6 +475,16 @@
       padding: 8px 10px;
       font: inherit;
       font-size: 13px
+    }
+
+    #sheet input:focus,
+    #sheet button:focus-visible {
+      scroll-margin-block: 12px 24px
+    }
+
+    #sheet.keyboard-open {
+      max-height: calc(var(--visible-viewport-height) - 8px);
+      border-radius: 14px 14px 0 0
     }
 
     input.f[aria-invalid=true] {
@@ -886,6 +901,31 @@
 
     const $ = id => document.getElementById(id);
     const st = { step: null, token: null, code: "", verificationExpiresAt: null, customerExisting: false, d: { name: "", biz: "", phone: "" }, pos: null, gpsFix: null, busy: false, gpsId: 0, gpsWatch: null, gpsTimer: null, gpsBest: null, gpsMaxSpeedMps: null, idempotencyKey: null, sent: false, ref: null, lastFocus: null };
+    const sheet = $("sheet"), visualViewport = window.visualViewport;
+    let viewportUpdateTimer;
+    function syncKeyboardViewport() {
+      const height = visualViewport?.height || window.innerHeight;
+      const offsetTop = visualViewport?.offsetTop || 0;
+      const bottomGap = Math.max(0, window.innerHeight - height - offsetTop);
+      document.documentElement.style.setProperty("--visible-viewport-height", `${Math.round(height)}px`);
+      document.documentElement.style.setProperty("--visible-viewport-bottom", `${Math.round(bottomGap)}px`);
+      const active = document.activeElement;
+      const editable = active && (active.matches("input, textarea, select") || active.isContentEditable);
+      const keyboardOpen = Boolean(editable && window.innerHeight - height > 120);
+      sheet.classList.toggle("keyboard-open", keyboardOpen);
+      if (keyboardOpen && sheet.classList.contains("open")) {
+        clearTimeout(viewportUpdateTimer);
+        viewportUpdateTimer = setTimeout(() => active.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" }), 80);
+      }
+    }
+    syncKeyboardViewport();
+    visualViewport?.addEventListener("resize", syncKeyboardViewport);
+    visualViewport?.addEventListener("scroll", syncKeyboardViewport);
+    window.addEventListener("resize", syncKeyboardViewport);
+    sheet.addEventListener("focusin", event => {
+      if (event.target.matches("input, textarea, select")) setTimeout(() => event.target.scrollIntoView({ block: "nearest", inline: "nearest" }), 100);
+    });
+    sheet.addEventListener("focusout", () => setTimeout(syncKeyboardViewport, 120));
     const DRAFT_KEY = "mauzosheet.customerSubmissionDraft.v1";
     let map, marker, myLocationMarker = null, myLocationAccuracy = null, captureAccuracyLayer = null, mapOk = false, mapBase, satL, labelL, shopsLayer, demandLayer, searchLayer, shopsRequest = 0, demandRequest = 0;
     let placeSearchTimer = null, placeSearchController = null, placeSearchSequence = 0;
