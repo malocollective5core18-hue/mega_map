@@ -236,6 +236,7 @@ def verify_code(request):
                 "customerName": customer.customer_name,
                 "businessName": customer.business_name,
                 "phone": customer.phone,
+                "status": customer.status,
                 "latitude": float(customer.location.navigation_latitude),
                 "longitude": float(customer.location.navigation_longitude),
                 "accuracyMeters": float(customer.location.accuracy_m)
@@ -367,7 +368,11 @@ def submit_location(request):
                 )
                 return Response(body, status=status.HTTP_409_CONFLICT)
             business = record_submission(data=data, request=request)
-            body = {"accepted": True, "reference": business.public_ref}
+            body = {
+                "accepted": True,
+                "reference": business.public_ref,
+                "status": business.status,
+            }
             session.used_at = timezone.now()
             session.save(update_fields=["used_at"])
             IdempotencyRecord.objects.create(
@@ -527,7 +532,11 @@ def update_customer_profile(request):
             business.save(update_fields=["customer_name", "business_name", "updated_at"])
             session.used_at = timezone.now()
             session.save(update_fields=["used_at"])
-            body = {"updated": True, "reference": business.public_ref}
+            body = {
+                "updated": True,
+                "reference": business.public_ref,
+                "status": business.status,
+            }
             IdempotencyRecord.objects.create(
                 key_hash=key_hash,
                 session=session,
