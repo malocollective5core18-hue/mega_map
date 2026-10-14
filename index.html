@@ -770,7 +770,8 @@
       <div class="warn"><b>Hakikisha upo eneo la ofisi au biashara yako ili uweze kutupatia location
           sahihi.</b><br><span class="note">Make sure you are physically at your office or business so you can share the
           correct location.</span></div>
-      <p class="note">For a better GPS reading, stand outside with a clear view of the sky and keep your phone still while it searches. The browser reports an estimated accuracy radius; it cannot guarantee an exact point.</p>
+      <p class="note">When you tap Continue, your browser asks your device once for a fused location. We use coordinates, the device-reported accuracy, fix time, and speed if available to place and check the pin. Speed is used only to ask you to stop moving; it is not sent or saved. We send the final pin, reported accuracy, source, fix age, and pin offset to the company to find your business. We do not read raw satellite, Wi-Fi, or cell signals and do not track you after this capture.</p>
+      <p class="note" lang="sw">Ukibonyeza Endelea, kivinjari kitaomba eneo la kifaa chako mara moja. Tunatumia viwianishi, usahihi unaoripotiwa na kifaa, muda wa kipimo na kasi ikiwa inapatikana kuweka na kukagua pini. Kasi hutumika tu kukuomba usimame; haitumwi wala kuhifadhiwa. Tunatuma pini ya mwisho, usahihi ulioripotiwa, chanzo, umri wa kipimo na umbali wa pini kwa kampuni ili ikutafute. Hatusomi mawimbi ghafi ya satelaiti, Wi-Fi au simu, na hatufuatilii eneo lako baada ya kipimo hiki.</p>
       <div class="acts"><button class="btn" id="goLoc">Endelea</button><button class="btn ghost"
           id="stop1">Sitisha</button></div>
       <div class="acts"><button class="btn ghost sm" data-back="form">Back</button></div>
@@ -820,10 +821,16 @@
         <dd id="rPlace"></dd>
         <dt>Accuracy</dt>
         <dd id="rAc"></dd>
+        <dt>Location source</dt>
+        <dd id="rSource"></dd>
+        <dt>Fix age</dt>
+        <dd id="rAge"></dd>
+        <dt>Pin offset from GPS fix</dt>
+        <dd id="rOffset"></dd>
       </dl>
       <p class="note">The pin on the map behind this panel shows the selected location.</p>
-      <p class="note">By continuing you agree that your name, phone number and location are sent to the company only to
-        find and serve your business. Data is not shown publicly.</p>
+      <p class="note">By continuing, you agree that your name, phone number, final pin, reported accuracy, location source, fix age and pin offset are sent to the company to find and serve your business. Device speed, if available, is used only for a movement warning and is not sent or stored. Your business location is not shown publicly unless you separately select the optional choice. This is a single capture started by you; we do not track your location afterwards.</p>
+      <p class="note" lang="sw">Ukiendelea, unakubali jina, simu, pini ya mwisho, usahihi ulioripotiwa, chanzo cha eneo, umri wa kipimo na umbali wa pini vitumwe kwa kampuni ili ikutafute na kukuhudumia. Kasi ya kifaa, ikipatikana, hutumika kwa tahadhari ya mwendo tu na haitumwi wala kuhifadhiwa. Eneo la biashara halitaonyeshwa hadharani isipokuwa uchague ruhusa tofauti iliyo hiari. Hiki ni kipimo kimoja ulichoanzisha; hatufuatilii eneo lako baadaye.</p>
       <label class="layerOption" for="publicListing"><input id="publicListing" type="checkbox"> I agree that, after we have served my business, its business name and approximate area may appear on the public map.</label>
       <p><b>Je, unathibitisha kuwa hii ndiyo location sahihi ya biashara yako?</b></p>
       <div id="subErr" class="err" role="alert"></div>
@@ -873,13 +880,14 @@
     const DEFAULT_MAP_CENTER = [-6.7924, 39.2083]; // Dar es Salaam
     const DEMO_MODE = false;
     const REQUEST_TIMEOUT_MS = 12000, GPS_TIMEOUT_MS = 20000;
-    const GPS_ACQUIRE_MS = 30000, GPS_TARGET_ACCURACY_M = 30;
+    const GPS_ACQUIRE_MS = 15000, GPS_TARGET_ACCURACY_M = 30;
+    let GPS_WARN_ACCURACY_M = 50, GPS_MOVING_SPEED_MPS = 1.5;
     /* =================================================================== */
 
     const $ = id => document.getElementById(id);
-    const st = { step: null, token: null, code: "", verificationExpiresAt: null, customerExisting: false, d: { name: "", biz: "", phone: "" }, pos: null, busy: false, gpsId: 0, gpsWatch: null, gpsTimer: null, gpsBest: null, idempotencyKey: null, sent: false, ref: null, lastFocus: null };
+    const st = { step: null, token: null, code: "", verificationExpiresAt: null, customerExisting: false, d: { name: "", biz: "", phone: "" }, pos: null, gpsFix: null, busy: false, gpsId: 0, gpsWatch: null, gpsTimer: null, gpsBest: null, gpsMaxSpeedMps: null, idempotencyKey: null, sent: false, ref: null, lastFocus: null };
     const DRAFT_KEY = "mauzosheet.customerSubmissionDraft.v1";
-    let map, marker, myLocationMarker = null, myLocationAccuracy = null, mapOk = false, mapBase, satL, labelL, shopsLayer, demandLayer, searchLayer, shopsRequest = 0, demandRequest = 0;
+    let map, marker, myLocationMarker = null, myLocationAccuracy = null, captureAccuracyLayer = null, mapOk = false, mapBase, satL, labelL, shopsLayer, demandLayer, searchLayer, shopsRequest = 0, demandRequest = 0;
     let placeSearchTimer = null, placeSearchController = null, placeSearchSequence = 0;
     let homeSearchTimer = null, homeSearchController = null, homeSearchSequence = 0;
 
@@ -937,6 +945,8 @@
         const config = await r.json();
         if (typeof config.whatsappNumber === "string") COMPANY_WHATSAPP_NUMBER = config.whatsappNumber;
         if (typeof config.phoneNumber === "string") COMPANY_PHONE_NUMBER = config.phoneNumber;
+        if (Number.isFinite(Number(config.locationWarningAccuracyM)) && Number(config.locationWarningAccuracyM) > 0) GPS_WARN_ACCURACY_M = Number(config.locationWarningAccuracyM);
+        if (Number.isFinite(Number(config.locationMovingSpeedMps)) && Number(config.locationMovingSpeedMps) > 0) GPS_MOVING_SPEED_MPS = Number(config.locationMovingSpeedMps);
       } catch { /* Support actions report that contact details are not configured. */ }
     }
     async function loadShops(bbox) {
@@ -996,19 +1006,38 @@
       if (!mapOk || !layer) return;
       if (visible) layer.addTo(map); else map.removeLayer(layer);
     }
-    function updateSelectedMapLocation(lat, lng, acc, zoom, placeLabel = "") {
+    function distanceMeters(lat1, lng1, lat2, lng2) {
+      const rad = degrees => degrees * Math.PI / 180;
+      const dLat = rad(lat2 - lat1), dLng = rad(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+    }
+    function updateSelectedMapLocation(lat, lng, acc, zoom, placeLabel = "", options = {}) {
       // The API stores coordinates to six decimal places and GPS accuracy to two.
       // Keep the sent values at the same precision shown in the review panel.
       lat = Number(Number(lat).toFixed(6)); lng = Number(Number(lng).toFixed(6));
+      const movedCoordinates = Boolean(st.pos && (st.pos.lat !== lat || st.pos.lng !== lng));
+      if (movedCoordinates) st.idempotencyKey = null;
+      const source = options.source || "manual_pin";
+      const fix = options.fix || st.gpsFix;
+      const movedByHand = options.pinMovedByHand === true;
+      const movementWithoutOriginalFix = !fix && source === "manual_pin" && (movedCoordinates || movedByHand);
+      if (movementWithoutOriginalFix) acc = null;
       acc = acc == null ? null : Number(Number(acc).toFixed(2));
-      if (st.pos && (st.pos.lat !== lat || st.pos.lng !== lng)) st.idempotencyKey = null;
-      st.pos = { lat, lng, acc: acc ?? null, place: placeLabel || (acc == null ? "Manually adjusted map pin" : "GPS location") };
+      const fixTimestamp = options.fixTimestamp ?? fix?.fixTimestamp ?? (movementWithoutOriginalFix ? null : st.pos?.fixTimestamp ?? null);
+      let pinOffsetMeters = movementWithoutOriginalFix ? null : (options.pinOffsetMeters ?? null);
+      if (fix) pinOffsetMeters = Number(distanceMeters(fix.lat, fix.lng, lat, lng).toFixed(2));
+      st.pos = { lat, lng, acc: acc ?? null, place: placeLabel || (acc == null ? "Manually adjusted map pin" : "GPS location"), locationSource: source, fixTimestamp, pinOffsetMeters, pinMovedByHand: movedByHand };
       $("lat").textContent = lat.toFixed(6); $("lng").textContent = lng.toFixed(6);
       $("acc").textContent = acc != null ? "about " + Math.round(acc) + " m" : "not reported";
       $("place").textContent = placeLabel || (acc != null ? "GPS location — check the pin" : "Manually adjusted map pin");
       $("locGo").disabled = false;
       saveWorkflowDraft();
       if (!mapOk) return;
+      if (captureAccuracyLayer) { map.removeLayer(captureAccuracyLayer); captureAccuracyLayer = null; }
+      if (fix && Number.isFinite(Number(fix.accuracy)) && Number(fix.accuracy) > 0) {
+        captureAccuracyLayer = L.circle([fix.lat, fix.lng], { radius: Number(fix.accuracy), color: "#1769aa", weight: 1, fillColor: "#1769aa", fillOpacity: .08 }).addTo(map);
+      }
       if (!marker) {
         marker = L.marker([lat, lng], {
           draggable: true,
@@ -1017,7 +1046,7 @@
           icon: L.divIcon({ className: "selected-pin-wrapper", html: '<div class="selected-location-pin"></div>', iconSize: [34, 42], iconAnchor: [17, 40] })
         }).addTo(map);
         marker.on("dragstart", () => { $("locSt").textContent = "Moving pin. Drop it directly on your business entrance."; });
-        marker.on("dragend", () => { ++st.gpsId; stopGpsAcquisition(); const p = marker.getLatLng(); updateSelectedMapLocation(p.lat, p.lng, null, undefined, "Manually adjusted map pin"); $("locSt").textContent = "Pin moved. Check that it marks the correct business entrance." });
+        marker.on("dragend", () => { ++st.gpsId; stopGpsAcquisition(); const p = marker.getLatLng(); updateSelectedMapLocation(p.lat, p.lng, st.pos?.acc, undefined, "Manually adjusted map pin", { source: "manual_pin", pinMovedByHand: true }); $("locSt").textContent = "Pin moved. Check that it marks the correct business entrance." });
       } else marker.setLatLng([lat, lng]);
       if (zoom) map.setView([lat, lng], zoom);
     }
@@ -1136,7 +1165,7 @@
           const lng = Number(coordinates[0]), lat = Number(coordinates[1]);
           input.value = label; hidePlaceResults(); ++st.gpsId; stopGpsAcquisition(); $("retry").disabled = false;
           $("locSt").textContent = "Place selected. Zoom in and confirm the pin is on your exact business entrance.";
-          updateSelectedMapLocation(lat, lng, null, 17, label);
+          updateSelectedMapLocation(lat, lng, st.pos?.acc, 17, label, { source: "manual_pin", pinMovedByHand: false });
         });
         results.append(option);
       });
@@ -1220,7 +1249,7 @@
       $("publicListing").checked = draft.publicListing === true;
       if (st.pos) {
         const p = st.pos;
-        updateSelectedMapLocation(p.lat, p.lng, p.acc, 16, p.place || "");
+        updateSelectedMapLocation(p.lat, p.lng, p.acc, 16, p.place || "", { source: p.locationSource || "manual_pin", fixTimestamp: p.fixTimestamp, pinOffsetMeters: p.pinOffsetMeters, pinMovedByHand: p.pinMovedByHand === true });
         if (p.place && !["GPS location", "Manually adjusted map pin", "Manually placed map pin"].includes(p.place)) $("locationSearch").value = p.place;
       }
       const savedStep = allowed.has(draft.step) ? draft.step : (st.pos ? "review" : "form");
@@ -1231,7 +1260,7 @@
       $("dock").inert = true; document.querySelector(".bar").inert = true; document.querySelector(".ctl").inert = true;
     }
     function goStep(s) {
-      if (st.step === "locate" && s !== "locate") { ++st.gpsId; stopGpsAcquisition(); }
+      if (st.step === "locate" && s !== "locate") { ++st.gpsId; stopGpsAcquisition(); st.gpsBest = null; st.gpsMaxSpeedMps = null; }
       st.step = s;
       document.querySelectorAll(".step").forEach(e => e.classList.toggle("on", e.dataset.s === s));
       const sh = $("sheet"); sh.classList.add("open"); sh.scrollTop = 0;
@@ -1252,7 +1281,9 @@
     function resetWorkflow() {
       clearSavedDraft(); $("draftNotice").hidden = true;
       st.gpsId++; stopGpsAcquisition(); if (st.watch != null) { navigator.geolocation.clearWatch(st.watch); st.watch = null }
-      Object.assign(st, { token: null, code: "", verificationExpiresAt: null, customerExisting: false, d: { name: "", biz: "", phone: "" }, pos: null, busy: false, idempotencyKey: null, sent: false, ref: null });
+      if (captureAccuracyLayer && mapOk) map.removeLayer(captureAccuracyLayer);
+      captureAccuracyLayer = null;
+      Object.assign(st, { token: null, code: "", verificationExpiresAt: null, customerExisting: false, d: { name: "", biz: "", phone: "" }, pos: null, gpsFix: null, gpsBest: null, gpsMaxSpeedMps: null, busy: false, idempotencyKey: null, sent: false, ref: null });
       ["code", "codePhone", "cn", "bn", "ph"].forEach(i => $(i).value = "");
       $("publicListing").checked = false;
       if (marker) { map.removeLayer(marker); marker = null }
@@ -1288,10 +1319,10 @@
             st.customerExisting = true;
             st.d = { name: String(customer.customerName || ""), biz: String(customer.businessName || ""), phone: String(customer.phone || phone) };
             st.pos = Number.isFinite(Number(customer.latitude)) && Number.isFinite(Number(customer.longitude))
-              ? { lat: Number(customer.latitude), lng: Number(customer.longitude), acc: customer.accuracyMeters == null ? null : Number(customer.accuracyMeters), place: "Saved customer location" }
+              ? { lat: Number(customer.latitude), lng: Number(customer.longitude), acc: null, place: "Saved customer location — confirm or capture again", locationSource: "manual_pin", fixTimestamp: null, pinOffsetMeters: null, pinMovedByHand: false }
               : null;
             $("cn").value = st.d.name; $("bn").value = st.d.biz; $("ph").value = st.d.phone; $("publicListing").checked = customer.publicListing === true;
-            if (st.pos) updateSelectedMapLocation(st.pos.lat, st.pos.lng, st.pos.acc, 16, st.pos.place);
+            if (st.pos) updateSelectedMapLocation(st.pos.lat, st.pos.lng, st.pos.acc, 16, st.pos.place, { source: "manual_pin" });
             $("accountWelcome").textContent = `Signed in as ${st.d.name} · ${st.d.biz} (${st.d.phone}).`;
           } else {
             st.customerExisting = false; st.pos = null;
@@ -1325,40 +1356,61 @@
       stopGpsAcquisition();
       clearTimeout(placeSearchTimer); ++placeSearchSequence; placeSearchController?.abort();
       $("locationSearch").value = ""; hidePlaceResults();
-      const id = ++st.gpsId; st.gpsBest = null; showErrorMessage("locErr", ""); goStep("locate");
+      const id = ++st.gpsId; st.gpsBest = null; st.gpsMaxSpeedMps = null; showErrorMessage("locErr", ""); goStep("locate");
       if (!("geolocation" in navigator)) { $("locSt").textContent = ""; showErrorMessage("locErr", "This browser cannot get your location. Tap the map to place the pin manually."); return; }
       if (!window.isSecureContext) { $("retry").disabled = false; $("locSt").textContent = ""; showErrorMessage("locErr", "GPS requires a secure HTTPS connection. You can place the pin on the map instead."); return; }
       $("locSt").innerHTML = '<span class="spin" style="border-color:#0f3d2e55;border-top-color:#0f3d2e"></span>Finding GPS location… keep the phone still and in an open area.'; $("retry").disabled = true;
-      const finish = () => {
+      const finish = (timeout = false) => {
         if (id !== st.gpsId) return;
         ++st.gpsId;
         stopGpsAcquisition(); $("retry").disabled = false;
         if (!st.gpsBest) {
+          st.gpsBest = null; st.gpsMaxSpeedMps = null;
           $("locSt").textContent = "";
-          showErrorMessage("locErr", "No GPS fix was received. Move outdoors, check location permission, then retry or place the pin on the map.");
+          showErrorMessage("locErr", timeout
+            ? "Location request timed out. Move outdoors, check location permission, then retry or place the pin on the map."
+            : "No GPS fix was received. Move outdoors, check location permission, then retry or place the pin on the map.");
           return;
         }
-        const best = st.gpsBest, accuracy = Math.round(best.acc);
-        $("locSt").textContent = best.acc <= GPS_TARGET_ACCURACY_M
-          ? `Best reported GPS accuracy: about ${accuracy} m. Check the pin at your business entrance.`
-          : `Best reading is about ${accuracy} m accuracy. A better fix was not available; check and adjust the pin carefully.`;
-        updateSelectedMapLocation(best.lat, best.lng, best.acc, 18);
+        const best = st.gpsBest, maxSpeedMps = st.gpsMaxSpeedMps;
+        st.gpsBest = null; st.gpsMaxSpeedMps = null;
+        if (maxSpeedMps != null && maxSpeedMps > GPS_MOVING_SPEED_MPS) {
+          st.gpsFix = null;
+          $("locSt").textContent = "";
+          showErrorMessage("locErr", "Your device reports that you are moving. Stand at the business entrance and retry GPS, or place the pin manually.");
+          return;
+        }
+        const accuracy = Math.round(best.acc);
+        st.gpsFix = { lat: best.lat, lng: best.lng, accuracy: best.acc, fixTimestamp: best.fixTimestamp };
+        $("locSt").textContent = best.acc > GPS_WARN_ACCURACY_M
+          ? `GPS estimate is about ${accuracy} m. Retry outdoors or near a window for a better reading; you can also adjust the pin manually.`
+          : `Device-reported accuracy is about ${accuracy} m. Check the pin at your business entrance.`;
+        updateSelectedMapLocation(best.lat, best.lng, best.acc, 18, "GPS location", { source: "gps", fix: st.gpsFix, pinOffsetMeters: 0, pinMovedByHand: false });
       };
-      st.gpsTimer = setTimeout(finish, GPS_ACQUIRE_MS);
+      st.gpsTimer = setTimeout(() => finish(true), GPS_ACQUIRE_MS);
       st.gpsWatch = navigator.geolocation.watchPosition(p => {
         if (id !== st.gpsId) return;
         const { latitude: lat, longitude: lng, accuracy } = p.coords;
         if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(accuracy) || accuracy < 0 || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+        const fixTimestamp = Number.isFinite(p.timestamp) ? new Date(p.timestamp).toISOString() : null;
+        const speedMps = Number.isFinite(p.coords.speed) && p.coords.speed >= 0 ? p.coords.speed : null;
+        if (speedMps != null && (st.gpsMaxSpeedMps == null || speedMps > st.gpsMaxSpeedMps)) st.gpsMaxSpeedMps = speedMps;
+        if (!fixTimestamp) return;
         if (!st.gpsBest || accuracy < st.gpsBest.acc) {
-          st.gpsBest = { lat, lng, acc: accuracy };
+          st.gpsBest = { lat, lng, acc: accuracy, fixTimestamp };
           $("locSt").textContent = `Improving GPS estimate… best so far: about ${Math.round(accuracy)} m.`;
         }
         if (accuracy <= GPS_TARGET_ACCURACY_M) finish();
       }, e => {
-        if (id !== st.gpsId || e.code !== 1) return;
+        if (id !== st.gpsId) return;
         if (st.gpsBest) { finish(); return; }
-        ++st.gpsId; stopGpsAcquisition(); $("retry").disabled = false; $("locSt").textContent = "";
-        showErrorMessage("locErr", "Location permission was denied. Allow location in your browser settings and retry, or tap the map to place the pin.");
+        ++st.gpsId; stopGpsAcquisition(); st.gpsBest = null; st.gpsMaxSpeedMps = null; $("retry").disabled = false; $("locSt").textContent = "";
+        const messages = {
+          1: "Location permission was denied. Allow location in your browser settings and retry, or tap the map to place the pin.",
+          2: "Your device could not determine a location. Check device location settings and try again, or place the pin manually.",
+          3: "Location request timed out. Move outdoors, check location permission, then retry or place the pin on the map."
+        };
+        showErrorMessage("locErr", messages[e.code] || "Location is unavailable. Check browser permission and device settings, then retry or place the pin manually.");
       }, { enableHighAccuracy: true, timeout: GPS_ACQUIRE_MS, maximumAge: 0 });
     }
     function showLocationConfirmation() {
@@ -1368,6 +1420,9 @@
       $("rLa").textContent = p.lat.toFixed(6); $("rLo").textContent = p.lng.toFixed(6);
       $("rPlace").textContent = p.place || "Selected map location";
       $("rAc").textContent = p.acc != null ? "about " + Math.round(p.acc) + " m" : "manually adjusted / not reported";
+      $("rSource").textContent = p.locationSource === "gps" ? "Device GPS estimate" : "Manually selected pin";
+      $("rAge").textContent = p.fixTimestamp ? `${Math.max(0, Math.round((Date.now() - Date.parse(p.fixTimestamp)) / 1000))} seconds` : "not available";
+      $("rOffset").textContent = p.pinOffsetMeters == null ? "not available" : `${Math.round(p.pinOffsetMeters)} m`;
       showErrorMessage("subErr", ""); goStep("review");
     }
 
@@ -1377,7 +1432,9 @@
       const btn = $("send"); setBusy(btn, true, "Inapotuma…"); showErrorMessage("subErr", "");
       const payload = {
         customerName: st.d.name, businessName: st.d.biz, phone: st.d.phone, latitude: st.pos.lat, longitude: st.pos.lng,
-        accuracyMeters: st.pos.acc, clientTimestamp: new Date().toISOString(), consent: true, confirmed: true,
+        accuracyMeters: st.pos.acc, locationSource: st.pos.locationSource || "manual_pin", fixTimestamp: st.pos.fixTimestamp,
+        pinOffsetMeters: st.pos.pinOffsetMeters, pinMovedByHand: st.pos.pinMovedByHand === true,
+        clientTimestamp: new Date().toISOString(), consent: true, confirmed: true,
         publicListing: $("publicListing").checked
       };
       try {
@@ -1387,11 +1444,15 @@
         const r = await fetchT(api(st.customerExisting ? "/api/customer/profile" : SUBMIT_LOCATION_ENDPOINT), { method: st.customerExisting ? "PUT" : "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + st.token, "Idempotency-Key": st.idempotencyKey }, body: JSON.stringify(payload) });
         if (r.status === 401 || r.status === 403) { clearSavedDraft(); throw new Error("Your session is not authorized. Please start again."); }
         if (r.status === 410) { clearSavedDraft(); throw new Error("Your session expired. Please start again with your code."); }
-        if (r.status === 409) { st.sent = true; clearSavedDraft(); showSuccessScreen(null, true); return; }
+        if (r.status === 409) {
+          const problem = await r.json().catch(() => ({}));
+          if (problem?.error?.code === "duplicate") { st.sent = true; clearSavedDraft(); showSuccessScreen(null, true); return; }
+          throw new Error("This request could not be matched to this sign-in session. Keep this screen open and contact the company before retrying.");
+        }
         if (r.status === 422) {
           const problem = await r.json().catch(() => ({}));
           if (problem?.error?.code === "phone_code_mismatch") throw new Error("This phone number does not match the number linked to your customer key. Go back and use the verified number.");
-          const labels = { customerName: "Name", businessName: "Business name", phone: "Phone", latitude: "Latitude", longitude: "Longitude", accuracyMeters: "GPS accuracy", consent: "Consent", confirmed: "Location confirmation", publicListing: "Public map choice", non_field_errors: "Details" };
+          const labels = { customerName: "Name", businessName: "Business name", phone: "Phone", latitude: "Latitude", longitude: "Longitude", accuracyMeters: "GPS accuracy", locationSource: "Location source", fixTimestamp: "GPS fix time", pinOffsetMeters: "Pin offset", pinMovedByHand: "Pin adjustment", consent: "Consent", confirmed: "Location confirmation", publicListing: "Public map choice", non_field_errors: "Details" };
           const details = problem?.error?.details;
           if (details && typeof details === "object") {
             const messages = Object.entries(details).flatMap(([field, errors]) => (Array.isArray(errors) ? errors : [errors]).map(message => `${labels[field] || field}: ${String(message)}`));
@@ -1438,7 +1499,7 @@
     $("publicListing").addEventListener("change", saveWorkflowDraft);
     $("goLoc").onclick = () => {
       if (st.customerExisting && st.pos) {
-        updateSelectedMapLocation(st.pos.lat, st.pos.lng, st.pos.acc, 16, st.pos.place || "Saved customer location");
+        updateSelectedMapLocation(st.pos.lat, st.pos.lng, st.pos.acc, 16, st.pos.place || "Saved customer location", { source: st.pos.locationSource || "manual_pin", fixTimestamp: st.pos.fixTimestamp, pinOffsetMeters: st.pos.pinOffsetMeters, pinMovedByHand: st.pos.pinMovedByHand === true });
         $("locSt").textContent = "Your saved location is selected. Review it on the map, move the pin if needed, or retry GPS.";
         goStep("locate");
       } else requestCurrentLocation();
@@ -1520,7 +1581,8 @@
     });
     void loadPublicConfig();
     initMap();
-    if (mapOk) map.on("click", e => { if (st.step === "locate") { ++st.gpsId; stopGpsAcquisition(); $("retry").disabled = false; $("locSt").textContent = "Pin placed manually. Zoom in and confirm the business entrance."; updateSelectedMapLocation(e.latlng.lat, e.latlng.lng, null, undefined, "Manually placed map pin"); } });
+    if (mapOk) map.on("click", e => { if (st.step === "locate") { ++st.gpsId; stopGpsAcquisition(); $("retry").disabled = false; $("locSt").textContent = "Pin placed manually. Zoom in and confirm the business entrance."; updateSelectedMapLocation(e.latlng.lat, e.latlng.lng, st.pos?.acc, undefined, "Manually placed map pin", { source: "manual_pin", pinMovedByHand: true }); } });
+    window.addEventListener("pagehide", () => { ++st.gpsId; stopGpsAcquisition(); st.gpsBest = null; st.gpsMaxSpeedMps = null; clearTimeout(placeSearchTimer); placeSearchController?.abort(); });
     restoreWorkflowDraft();
   </script>
 </body>

@@ -155,6 +155,285 @@ class AccuracyLanguageTests(TestCase):
             self.assertNotRegex(text, r"(?:gps|location|accuracy).{0,80}(?:is|will be) guaranteed")
 
 
+class LocationSignalValidationTests(TestCase):
+    def location_payload(self, **overrides):
+        data = {
+            "customerName": "Signal Test Customer",
+            "businessName": "Signal Test Shop",
+            "phone": "0712345678",
+            "latitude": -6.8,
+            "longitude": 39.2,
+            "accuracyMeters": 20,
+            "locationSource": "gps",
+            "fixTimestamp": timezone.now().isoformat(),
+            "pinOffsetMeters": 0,
+            "pinMovedByHand": False,
+            "consent": True,
+            "confirmed": True,
+            "publicListing": False,
+        }
+        data.update(overrides)
+        return data
+
+    def test_fresh_gps_fix_is_accepted_with_server_calculated_age(self):
+        from .serializers import LocationSubmissionSerializer
+
+        serializer = LocationSubmissionSerializer(data=self.location_payload())
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertGreaterEqual(serializer.validated_data["fixAgeSeconds"], 0)
+        self.assertLessEqual(serializer.validated_data["fixAgeSeconds"], 2)
+
+    def test_coordinates_outside_configured_service_region_are_rejected(self):
+        from .serializers import LocationSubmissionSerializer
+
+        serializer = LocationSubmissionSerializer(data=self.location_payload(latitude=-20))
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("latitude", serializer.errors)
+
+    def test_stale_fix_is_rejected(self):
+        from datetime import timedelta
+
+        from .serializers import LocationSubmissionSerializer
+
+        stale = (timezone.now() - timedelta(seconds=601)).isoformat()
+        serializer = LocationSubmissionSerializer(data=self.location_payload(fixTimestamp=stale))
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("fixTimestamp", serializer.errors)
+
+    def test_fix_timestamp_without_timezone_is_rejected(self):
+        from .serializers import LocationSubmissionSerializer
+
+        local_timestamp = timezone.now().replace(tzinfo=None).isoformat()
+        serializer = LocationSubmissionSerializer(
+            data=self.location_payload(fixTimestamp=local_timestamp)
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("fixTimestamp", serializer.errors)
+
+    def test_future_skew_and_impossible_accuracy_are_rejected(self):
+        from datetime import timedelta
+
+        from .serializers import LocationSubmissionSerializer
+
+        future = (timezone.now() + timedelta(minutes=2)).isoformat()
+        for updates in ({"fixTimestamp": future}, {"accuracyMeters": 100001}):
+            serializer = LocationSubmissionSerializer(data=self.location_payload(**updates))
+            self.assertFalse(serializer.is_valid())
+
+    def test_manual_pin_needs_no_gps_fix_and_is_low_confidence(self):
+        from .models import BusinessLocation
+        from .serializers import LocationSubmissionSerializer
+        from .views import location_confidence
+
+        serializer = LocationSubmissionSerializer(
+            data=self.location_payload(
+                accuracyMeters=None,
+                locationSource="manual_pin",
+                fixTimestamp=None,
+                pinOffsetMeters=None,
+                pinMovedByHand=True,
+            )
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        location = BusinessLocation(
+            source=BusinessLocation.Source.MANUAL,
+            accuracy_m=None,
+            fix_age_seconds=None,
+            pin_offset_m=None,
+            pin_moved_by_hand=True,
+            team_verified=False,
+        )
+        self.assertEqual(location_confidence(location)["level"], "low")
+
+    def test_confidence_uses_accuracy_age_offset_and_staff_verification(self):
+        from .models import BusinessLocation
+        from .views import location_confidence
+
+        good = BusinessLocation(
+            source=BusinessLocation.Source.GPS,
+            accuracy_m=20,
+            fix_age_seconds=10,
+            pin_offset_m=5,
+            pin_moved_by_hand=False,
+            team_verified=False,
+        )
+        large_offset = BusinessLocation(
+            source=BusinessLocation.Source.GPS,
+            accuracy_m=20,
+            fix_age_seconds=10,
+            pin_offset_m=500,
+            pin_moved_by_hand=True,
+            team_verified=False,
+        )
+        verified = BusinessLocation(
+            source=BusinessLocation.Source.MANUAL,
+            accuracy_m=None,
+            fix_age_seconds=None,
+            pin_offset_m=None,
+            pin_moved_by_hand=True,
+            team_verified=True,
+        )
+        self.assertEqual(location_confidence(good)["level"], "high")
+        self.assertEqual(location_confidence(large_offset)["level"], "low")
+        self.assertIn("offset", location_confidence(large_offset)["message"].lower())
+        self.assertEqual(location_confidence(verified)["level"], "high")
+
+    def test_submission_persists_offset_and_capture_source_without_original_fix(self):
+        from django.test import RequestFactory
+
+        from .models import BusinessLocation
+        from .serializers import LocationSubmissionSerializer
+        from .services import record_submission
+
+        serializer = LocationSubmissionSerializer(
+            data=self.location_payload(
+                locationSource="manual_pin", pinOffsetMeters=85, pinMovedByHand=True
+            )
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        business = record_submission(
+            data=serializer.validated_data,
+            request=RequestFactory().post("/api/location-submissions"),
+        )
+        location = BusinessLocation.objects.get(business=business)
+        self.assertEqual(location.source, BusinessLocation.Source.MANUAL)
+        self.assertEqual(float(location.pin_offset_m), 85)
+        self.assertTrue(location.pin_moved_by_hand)
+        self.assertIsNotNone(location.fix_age_seconds)
+        self.assertFalse(hasattr(location, "gps_latitude"))
+        self.assertFalse(hasattr(location, "gps_longitude"))
+
+
+class AssignedFieldTeamJourneyTests(TestCase):
+    def setUp(self):
+        self.group, _ = Group.objects.get_or_create(name="field_team")
+        self.user = get_user_model().objects.create_user(
+            username="field-member", email="field@example.test", password="safe-test-password"
+        )
+        self.user.groups.add(self.group)
+        self.assigned = self.create_business("BU-FIELD-ASSIGNED", assigned_to=self.user)
+        self.other = self.create_business("BU-FIELD-OTHER")
+        self.client = APIClient()
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["mfa_verified_user_id"] = str(self.user.pk)
+        session.save()
+
+    def create_business(self, reference, assigned_to=None):
+        business = CustomerBusiness.objects.create(
+            public_ref=reference,
+            customer_name="Field Test Customer",
+            business_name="Field Test Business",
+            phone="+255712345670",
+            assigned_to=assigned_to,
+        )
+        BusinessLocation.objects.create(
+            business=business,
+            latitude=Decimal("-6.8"),
+            longitude=Decimal("39.2"),
+            accuracy_m=Decimal("20"),
+            source=BusinessLocation.Source.GPS,
+            fix_age_seconds=10,
+            pin_offset_m=Decimal("0"),
+        )
+        Consent.objects.create(
+            business=business, privacy_notice_version="test", location_processing=True
+        )
+        return business
+
+    def test_field_team_sees_only_assigned_jobs_and_cannot_open_another(self):
+        response = self.client.get("/api/admin/businesses")
+        self.assertEqual(
+            [row["reference"] for row in response.data["items"]], ["BU-FIELD-ASSIGNED"]
+        )
+        denied = self.client.get(f"/api/admin/businesses/{self.other.pk}")
+        self.assertEqual(denied.status_code, 404)
+
+    def test_arrival_check_returns_distance_and_audits_without_storing_position(self):
+        response = self.client.post(
+            f"/api/admin/businesses/{self.assigned.pk}/arrival-check",
+            {
+                "latitude": -6.8001,
+                "longitude": 39.2,
+                "accuracyMeters": 10,
+                "fixTimestamp": timezone.now().isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertAlmostEqual(response.data["distanceMeters"], 11.1, delta=1)
+        event = AuditLog.objects.get(action="location.arrival_checked")
+        self.assertEqual(event.object_id, str(self.assigned.pk))
+        self.assertNotIn("-6.8001", str(event.metadata))
+        self.assertNotIn("39.2", str(event.metadata))
+
+    def test_arrival_check_rejects_unassigned_jobs(self):
+        response = self.client.post(
+            f"/api/admin/businesses/{self.other.pk}/arrival-check",
+            {
+                "latitude": -6.8,
+                "longitude": 39.2,
+                "accuracyMeters": 10,
+                "fixTimestamp": timezone.now().isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_field_team_can_correct_only_an_assigned_pin(self):
+        response = self.client.patch(
+            f"/api/admin/businesses/{self.assigned.pk}",
+            {"correctedLatitude": -6.81, "correctedLongitude": 39.21},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["teamVerified"])
+        denied = self.client.patch(
+            f"/api/admin/businesses/{self.assigned.pk}",
+            {"phone": "0712345678"},
+            format="json",
+        )
+        self.assertEqual(denied.status_code, 403)
+
+    def test_field_team_cannot_list_assignable_accounts(self):
+        response = self.client.get("/api/admin/assignable-staff")
+        self.assertEqual(response.status_code, 403)
+
+    def test_field_team_cannot_create_visit_records(self):
+        response = self.client.post(
+            f"/api/admin/businesses/{self.assigned.pk}/visits",
+            {"visitDate": timezone.localdate().isoformat(), "team": "Field", "outcome": "Arrived"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_dispatcher_can_assign_jobs_to_field_team_member(self):
+        dispatcher_group, _ = Group.objects.get_or_create(name="dispatcher")
+        dispatcher = get_user_model().objects.create_user(
+            username="dispatcher", password="safe-test-password"
+        )
+        dispatcher.groups.add(dispatcher_group)
+        client = APIClient()
+        client.force_login(dispatcher)
+        session = client.session
+        session["mfa_verified_user_id"] = str(dispatcher.pk)
+        session.save()
+        accounts = client.get("/api/admin/assignable-staff")
+        self.assertEqual(accounts.status_code, 200)
+        self.assertIn(
+            {"id": self.user.pk, "username": "field-member", "role": "field_team"},
+            accounts.data["items"],
+        )
+        assigned = client.patch(
+            f"/api/admin/businesses/{self.other.pk}",
+            {"assignee": self.user.pk},
+            format="json",
+        )
+        self.assertEqual(assigned.status_code, 200)
+        self.other.refresh_from_db()
+        self.assertEqual(self.other.assigned_to_id, self.user.pk)
+
+
 class PublicAssetIntegrityTests(TestCase):
     def test_public_leaflet_assets_are_pinned_and_integrity_protected(self):
         from pathlib import Path

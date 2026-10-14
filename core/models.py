@@ -124,6 +124,9 @@ class BusinessLocation(models.Model):
     accuracy_m = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     source = models.CharField(max_length=16, choices=Source.choices, default=Source.GPS)
     captured_at = models.DateTimeField(default=timezone.now)
+    fix_age_seconds = models.PositiveIntegerField(null=True, blank=True)
+    pin_offset_m = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    pin_moved_by_hand = models.BooleanField(default=False)
     address_text = models.CharField(max_length=500, blank=True)
     ward = models.CharField(max_length=160, blank=True)
     district = models.CharField(max_length=160, blank=True)
@@ -154,6 +157,10 @@ class BusinessLocation(models.Model):
             models.CheckConstraint(
                 condition=models.Q(accuracy_m__isnull=True) | models.Q(accuracy_m__gte=0),
                 name="business_accuracy_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(pin_offset_m__isnull=True) | models.Q(pin_offset_m__gte=0),
+                name="business_pin_offset_nonnegative",
             ),
             models.CheckConstraint(
                 condition=models.Q(corrected_lat__isnull=True)

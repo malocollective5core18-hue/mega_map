@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import io
+import math
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.parse import quote
 
@@ -190,6 +191,8 @@ def public_config(request):
             "whatsappNumber": getattr(settings, "COMPANY_WHATSAPP_NUMBER", ""),
             "phoneNumber": getattr(settings, "COMPANY_PHONE_NUMBER", ""),
             "privacyNoticeVersion": settings.PRIVACY_NOTICE_VERSION,
+            "locationWarningAccuracyM": settings.LOCATION_WARN_ACCURACY_M,
+            "locationMovingSpeedMps": settings.LOCATION_MOVING_SPEED_MPS,
         }
     )
 
@@ -484,11 +487,12 @@ def update_customer_profile(request):
             business.location.latitude = data["latitude"]
             business.location.longitude = data["longitude"]
             business.location.accuracy_m = data.get("accuracyMeters")
-            business.location.source = (
-                BusinessLocation.Source.GPS
-                if data.get("accuracyMeters") is not None
-                else BusinessLocation.Source.MANUAL
+            business.location.source = data.get(
+                "locationSource", BusinessLocation.Source.MANUAL
             )
+            business.location.fix_age_seconds = data.get("fixAgeSeconds")
+            business.location.pin_offset_m = data.get("pinOffsetMeters")
+            business.location.pin_moved_by_hand = data.get("pinMovedByHand", False)
             business.location.captured_at = timezone.now()
             business.location.corrected_lat = None
             business.location.corrected_lng = None
@@ -505,6 +509,9 @@ def update_customer_profile(request):
                     "longitude",
                     "accuracy_m",
                     "source",
+                    "fix_age_seconds",
+                    "pin_offset_m",
+                    "pin_moved_by_hand",
                     "captured_at",
                     "corrected_lat",
                     "corrected_lng",
@@ -584,7 +591,11 @@ def staff_required(request, *, admin=False):
         return error(
             "not_allowed", "This action is limited to administrators.", status.HTTP_403_FORBIDDEN
         )
-    if not role and not (has_role(request.user, "dispatcher") or has_role(request.user, "admin")):
+    if not role and not (
+        has_role(request.user, "dispatcher")
+        or has_role(request.user, "admin")
+        or has_role(request.user, "field_team")
+    ):
         record_audit(
             request=request,
             actor=request.user,
@@ -671,6 +682,7 @@ def auth_login(request):
             has_role(user, "dispatcher")
             or has_role(user, "admin")
             or user.groups.filter(name="service_provider").exists()
+            or user.groups.filter(name="field_team").exists()
         )
     ):
         record_audit(
@@ -689,6 +701,8 @@ def auth_login(request):
         role = "admin"
     elif user.groups.filter(name="service_provider").exists():
         role = "service_provider"
+    elif user.groups.filter(name="field_team").exists():
+        role = "field_team"
     else:
         role = "dispatcher"
 
@@ -874,7 +888,7 @@ def admin_staff_users(request):
     User = get_user_model()
     if request.method == "GET":
         users = (
-            User.objects.filter(groups__name__in=["admin", "service_provider"])
+            User.objects.filter(groups__name__in=["admin", "service_provider", "field_team"])
             .distinct()
             .order_by("username")
         )
@@ -883,9 +897,14 @@ def admin_staff_users(request):
                 "id": user.pk,
                 "username": user.get_username(),
                 "email": user.email,
-                "role": "service_provider"
-                if user.groups.filter(name="service_provider").exists()
-                else "admin",
+                "role": next(
+                    (
+                        role
+                        for role in ("service_provider", "field_team", "admin")
+                        if user.groups.filter(name=role).exists()
+                    ),
+                    "admin",
+                ),
                 "active": user.is_active,
                 "createdAt": user.date_joined.isoformat(),
             }
@@ -917,7 +936,7 @@ def admin_staff_users(request):
         or not email
         or len(email) > 254
         or not password
-        or role not in ("admin", "service_provider")
+        or role not in ("admin", "service_provider", "field_team")
     ):
         return error(
             "invalid_staff_user",
@@ -1030,18 +1049,49 @@ def navigation_links(location):
         "googleMapsWalking": google_walking,
         "waze": f"https://waze.com/ul?ll={quote(pair, safe=',')}&navigate=yes",
         "appleMaps": f"https://maps.apple.com/?daddr={quote(pair, safe=',')}",
-        "openStreetMap": f"https://www.openstreetmap.org/?mlat={lat_text}&mlon={lng_text}#map=19/{lat_text}/{lng_text}",
+        "openStreetMap": (
+            f"https://www.openstreetmap.org/?mlat={lat_text}&mlon={lng_text}"
+            f"#map=19/{lat_text}/{lng_text}"
+        ),
         "whatsappShare": f"https://wa.me/?text={quote(google_driving, safe='')}",
     }
 
 
 def location_confidence(location):
-    if location.source == BusinessLocation.Source.MANUAL or location.accuracy_m is None:
+    if location.team_verified:
+        return {"level": "high", "message": "A staff member has checked this pin on site."}
+    if location.accuracy_m is None or location.fix_age_seconds is None:
         return {"level": "low", "message": "Call the customer to confirm before travelling."}
     accuracy = float(location.accuracy_m)
-    if accuracy <= 30:
+    age = int(location.fix_age_seconds)
+    offset = float(location.pin_offset_m) if location.pin_offset_m is not None else None
+    if offset is not None and offset > settings.LOCATION_LARGE_OFFSET_M:
+        return {
+            "level": "low",
+            "message": (
+                "The pin was moved a long distance from its GPS estimate. "
+                "Call the customer to confirm."
+            ),
+        }
+    if age > settings.LOCATION_MAX_FIX_AGE_SECONDS:
+        return {
+            "level": "low",
+            "message": "The location reading is old. Call the customer to confirm.",
+        }
+    if location.source == BusinessLocation.Source.MANUAL and offset is None:
+        return {
+            "level": "low",
+            "message": "This pin was placed manually. Call the customer to confirm.",
+        }
+    if (
+        location.source == BusinessLocation.Source.GPS
+        and accuracy <= 30
+        and age <= 30
+        and offset is not None
+        and offset <= 50
+    ):
         return {"level": "high", "message": ""}
-    if accuracy <= 100:
+    if accuracy <= 100 and offset is not None and offset <= settings.LOCATION_LARGE_OFFSET_M:
         return {
             "level": "medium",
             "message": "Check the pin and allow extra time to confirm the entrance.",
@@ -1084,6 +1134,12 @@ def serialize_staff_business(business, *, detail=False):
         "accountAccess": phone_access(business.phone),
         "status": business.status,
         "accuracyMeters": float(location.accuracy_m) if location.accuracy_m is not None else None,
+        "locationSource": location.source,
+        "fixAgeSeconds": location.fix_age_seconds,
+        "pinOffsetMeters": float(location.pin_offset_m)
+        if location.pin_offset_m is not None
+        else None,
+        "pinMovedByHand": location.pin_moved_by_hand,
         "latitude": float(location.navigation_latitude),
         "longitude": float(location.navigation_longitude),
         "locationConfidence": location_confidence(location),
@@ -1135,6 +1191,8 @@ def admin_businesses(request):
     if denied:
         return denied
     businesses = CustomerBusiness.objects.select_related("location", "consent", "assigned_to")
+    if has_role(request.user, "field_team") and not request.user.is_superuser:
+        businesses = businesses.filter(assigned_to=request.user)
     status_filter = request.query_params.get("status", "").strip()
     if status_filter:
         if status_filter not in CustomerBusiness.Status.values:
@@ -1173,6 +1231,41 @@ def admin_businesses(request):
     )
 
 
+@api_view(["GET"])
+@permission_classes([AuditIsAuthenticated])
+def admin_assignable_staff(request):
+    denied = staff_required(request)
+    if denied:
+        return denied
+    if has_role(request.user, "field_team") and not request.user.is_superuser:
+        return error("not_allowed", "Only dispatch staff can assign jobs.", 403)
+    User = get_user_model()
+    users = (
+        User.objects.filter(is_active=True, groups__name__in=["dispatcher", "admin", "field_team"])
+        .distinct()
+        .order_by("username")
+    )
+    return Response(
+        {
+            "items": [
+                {
+                    "id": user.pk,
+                    "username": user.get_username(),
+                    "role": next(
+                        (
+                            role
+                            for role in ("field_team", "dispatcher", "admin")
+                            if user.groups.filter(name=role).exists()
+                        ),
+                        "staff",
+                    ),
+                }
+                for user in users
+            ]
+        }
+    )
+
+
 @api_view(["GET", "PATCH"])
 @permission_classes([AuditIsAuthenticated])
 def admin_business_detail(request, business_id):
@@ -1186,6 +1279,9 @@ def admin_business_detail(request, business_id):
     )
     if business is None:
         return error("not_found", "Business not found.", status.HTTP_404_NOT_FOUND)
+    is_field_team = has_role(request.user, "field_team") and not request.user.is_superuser
+    if is_field_team and business.assigned_to_id != request.user.pk:
+        return error("not_found", "Assigned business not found.", status.HTTP_404_NOT_FOUND)
     original_phone = business.phone
     if request.method == "GET":
         record_audit(
@@ -1211,6 +1307,18 @@ def admin_business_detail(request, business_id):
     if not isinstance(data, dict) or set(data) - allowed:
         return error(
             "invalid_patch", "The update contains unsupported fields.", status.HTTP_400_BAD_REQUEST
+        )
+    if is_field_team and set(data) - {"correctedLatitude", "correctedLongitude"}:
+        record_audit(
+            request=request,
+            actor=request.user,
+            action="auth.authorization_denied",
+            object_type="CustomerBusiness",
+            object_id=business.pk,
+            metadata={"reason": "field_team_pin_only"},
+        )
+        return error(
+            "not_allowed", "Field team members may only correct an assigned location.", 403
         )
     if "publicListing" in data and not has_role(request.user, "admin"):
         record_audit(
@@ -1299,6 +1407,17 @@ def admin_business_detail(request, business_id):
             return error(
                 "invalid_correction", "Coordinates are out of range.", status.HTTP_400_BAD_REQUEST
             )
+        if (
+            lat < Decimal(str(settings.SERVICE_REGION_MIN_LAT))
+            or lat > Decimal(str(settings.SERVICE_REGION_MAX_LAT))
+            or lng < Decimal(str(settings.SERVICE_REGION_MIN_LNG))
+            or lng > Decimal(str(settings.SERVICE_REGION_MAX_LNG))
+        ):
+            return error(
+                "invalid_correction",
+                "Corrected pin is outside the configured service area.",
+                status.HTTP_400_BAD_REQUEST,
+            )
         correction = (
             lat.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP),
             lng.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP),
@@ -1310,7 +1429,9 @@ def admin_business_detail(request, business_id):
         try:
             assignee = (
                 user_model.objects.filter(
-                    pk=data["assignee"], is_active=True, groups__name__in=["dispatcher", "admin"]
+                    pk=data["assignee"],
+                    is_active=True,
+                    groups__name__in=["dispatcher", "admin", "field_team"],
                 )
                 .distinct()
                 .first()
@@ -1427,6 +1548,8 @@ def admin_business_visits(request, business_id):
     denied = staff_required(request)
     if denied:
         return denied
+    if has_role(request.user, "field_team") and not request.user.is_superuser:
+        return error("not_allowed", "Field team members cannot edit visit records.", 403)
     business = CustomerBusiness.objects.filter(pk=business_id).first()
     if business is None:
         return error("not_found", "Business not found.", status.HTTP_404_NOT_FOUND)
@@ -1462,6 +1585,79 @@ def admin_business_visits(request, business_id):
     return Response(
         {"id": visit.pk, "visitDate": visit.visit_date.isoformat()}, status=status.HTTP_201_CREATED
     )
+
+
+@api_view(["POST"])
+@permission_classes([AuditIsAuthenticated])
+def admin_business_arrival_check(request, business_id):
+    denied = staff_required(request)
+    if denied:
+        return denied
+    if not has_role(request.user, "field_team") or request.user.is_superuser:
+        return error("not_allowed", "This check is for field team members.", 403)
+    business = CustomerBusiness.objects.select_related("location").filter(pk=business_id).first()
+    if business is None or business.assigned_to_id != request.user.pk:
+        return error("not_found", "Assigned business not found.", 404)
+    try:
+        latitude = Decimal(str(request.data.get("latitude")))
+        longitude = Decimal(str(request.data.get("longitude")))
+        accuracy = Decimal(str(request.data.get("accuracyMeters")))
+        captured = parse_datetime(str(request.data.get("fixTimestamp", "")))
+        if not latitude.is_finite() or not longitude.is_finite() or not accuracy.is_finite():
+            raise InvalidOperation
+    except (InvalidOperation, TypeError, ValueError):
+        return error("invalid_location", "Capture your position again and retry.", 422)
+    now = timezone.now()
+    if (
+        latitude < Decimal(str(settings.SERVICE_REGION_MIN_LAT))
+        or latitude > Decimal(str(settings.SERVICE_REGION_MAX_LAT))
+        or longitude < Decimal(str(settings.SERVICE_REGION_MIN_LNG))
+        or longitude > Decimal(str(settings.SERVICE_REGION_MAX_LNG))
+        or accuracy < 0
+        or accuracy > Decimal(str(settings.LOCATION_MAX_ACCURACY_M))
+        or captured is None
+        or timezone.is_naive(captured)
+    ):
+        return error(
+            "invalid_location", "The location reading is not usable. Retry the check.", 422
+        )
+    age = (now - captured).total_seconds()
+    if (
+        age < -settings.LOCATION_FUTURE_SKEW_SECONDS
+        or age > settings.LOCATION_MAX_FIX_AGE_SECONDS
+    ):
+        return error(
+            "stale_location",
+            "The location reading is too old or has an invalid time. Retry.",
+            422,
+        )
+    destination_lat = float(business.location.navigation_latitude)
+    destination_lng = float(business.location.navigation_longitude)
+    earth_radius_m = 6371008.8
+    lat1, lat2 = math.radians(float(latitude)), math.radians(destination_lat)
+    delta_lat = lat2 - lat1
+    delta_lng = math.radians(destination_lng - float(longitude))
+    a = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lng / 2) ** 2
+    )
+    a = min(1.0, max(0.0, a))
+    distance_m = earth_radius_m * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    if distance_m < 50:
+        distance_band = "under_50m"
+    elif distance_m < 250:
+        distance_band = "50_to_250m"
+    else:
+        distance_band = "over_250m"
+    record_audit(
+        request=request,
+        actor=request.user,
+        action="location.arrival_checked",
+        object_type="CustomerBusiness",
+        object_id=business.pk,
+        metadata={"distance_band": distance_band},
+    )
+    return Response({"distanceMeters": round(distance_m), "accuracyMeters": float(accuracy)})
 
 
 def csv_safe_text(value):
@@ -1666,7 +1862,11 @@ def admin_provider_codes(request):
                     "businessName": customer.business_name if customer else None,
                     "phone": customer.phone
                     if customer
-                    else ("•••• " + code.target_phone_last4 if code.target_phone_last4 else None),
+                    else (
+                        "•••• " + code.target_phone_last4
+                        if code.target_phone_last4
+                        else None
+                    ),
                 }
             )
         record_audit(

@@ -88,9 +88,10 @@ def record_submission(*, data, request):
         latitude=data["latitude"],
         longitude=data["longitude"],
         accuracy_m=data.get("accuracyMeters"),
-        source=BusinessLocation.Source.GPS
-        if data.get("accuracyMeters") is not None
-        else BusinessLocation.Source.MANUAL,
+        source=data.get("locationSource", BusinessLocation.Source.MANUAL),
+        fix_age_seconds=data.get("fixAgeSeconds"),
+        pin_offset_m=data.get("pinOffsetMeters"),
+        pin_moved_by_hand=data.get("pinMovedByHand", False),
     )
     Consent.objects.create(
         business=business,

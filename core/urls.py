@@ -29,6 +29,7 @@ urlpatterns = [
     ),
     path("admin/staff-users", views.admin_staff_users, name="admin-staff-users"),
     path("admin/businesses", views.admin_businesses, name="admin-businesses"),
+    path("admin/assignable-staff", views.admin_assignable_staff, name="admin-assignable-staff"),
     path(
         "admin/businesses/<uuid:business_id>",
         views.admin_business_detail,
@@ -38,6 +39,11 @@ urlpatterns = [
         "admin/businesses/<uuid:business_id>/visits",
         views.admin_business_visits,
         name="admin-business-visits",
+    ),
+    path(
+        "admin/businesses/<uuid:business_id>/arrival-check",
+        views.admin_business_arrival_check,
+        name="admin-business-arrival-check",
     ),
     path("admin/export.csv", views.admin_export, name="admin-export"),
     path("admin/provider-codes", views.admin_provider_codes, name="admin-provider-codes"),

@@ -12,7 +12,9 @@ def staff_home(request):
     )
     if mfa_verified and (
         request.user.is_superuser
-        or request.user.groups.filter(name__in=["dispatcher", "admin", "service_provider"]).exists()
+        or request.user.groups.filter(
+            name__in=["dispatcher", "admin", "service_provider", "field_team"]
+        ).exists()
     ):
         return render(
             request,
@@ -23,6 +25,8 @@ def staff_home(request):
                 "is_superuser": request.user.is_superuser,
                 "is_provider": not request.user.is_superuser
                 and request.user.groups.filter(name="service_provider").exists(),
+                "is_field_team": not request.user.is_superuser
+                and request.user.groups.filter(name="field_team").exists(),
                 "is_mfa_recovery_owner": bool(
                     settings.MFA_RECOVERY_OWNER_EMAIL
                     and request.user.email.strip().lower() == settings.MFA_RECOVERY_OWNER_EMAIL

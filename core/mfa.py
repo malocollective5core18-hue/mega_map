@@ -17,7 +17,7 @@ def is_staff_user(user):
         and (
             user.is_superuser
             or user.groups.filter(
-                name__in=("dispatcher", "admin", "service_provider")
+                name__in=("dispatcher", "admin", "service_provider", "field_team")
             ).exists()
         )
     )
