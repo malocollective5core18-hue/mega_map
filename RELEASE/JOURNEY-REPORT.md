@@ -3,7 +3,7 @@
 **Date:** 14 October 2026
 **Implementation/check update:** 15 October 2026
 **Branch:** `feature/user-journeys` (created from `fix/audit-defects` at `d26535e`)
-**Published commits:** `439a93e` (implementation), `96e26dc` (journey/privacy docs); branch push succeeded.
+**Published commits:** `439a93e` (implementation), `96e26dc` (journey/privacy docs), `b892b90` (status correction), `fba3212` (mobile keyboard visibility); branch push succeeded.
 **Scope:** Source review and implementation plan for Mission 6. No live systems or production/customer data were accessed.
 
 ## Journey status
@@ -31,6 +31,8 @@
 
 | Work item | Status | Result |
 |---|---|---|
+| Customer key verification | Single screen in source | Phone and reusable service key are submitted together with one Continue action. No second customer OTP step. |
+| Verification sheet with mobile keyboard | Implemented in source; device Not tested | Sheet tracks the visual viewport, scrolls internally, and brings focused fields into view when the on-screen keyboard opens. |
 | Registered customer directory | Gap fixed in source | `customersView` markup and role-guarded handlers restore the staff navigation view; runtime still Not tested. |
 | 409 client error distinction | Gap fixed in source | Duplicate only succeeds; idempotency conflicts remain visible errors and preserve retry state. |
 | GPS denial, unavailable and timeout UI | Gap fixed in source | Distinct messages stop capture watcher; browser permission behavior Not tested. |
@@ -60,7 +62,7 @@
 - Compare GPS fix with business entrance, drag the pin small/large distances, search a place, use a manual-only pin, and check staff confidence/flags.
 - Test out-of-bound, stale, future-skewed, impossible-accuracy requests directly against the API.
 - Test a field team assigned job, poor/no-network navigation, distance check, and audited correction only after role policy is approved.
-- Capture screenshots at 360×640 and 390×844 for every public/customer/staff screen; verify inner list scrolling, keyboard/focus order, visible focus, reduced motion, touch target size and no page-level overflow.
+- Capture screenshots at 360×640 and 390×844 for every public/customer/staff screen; verify inner list scrolling, keyboard/focus order (including phone and key inputs with the mobile keyboard open), visible focus, reduced motion, touch target size and no page-level overflow.
 
 No location claim should exceed browser-reported estimates and staff confirmation. Browser location does not expose raw GPS satellite measurements, Wi-Fi/cell signals or reliable spoof detection. Native app work is future scope and requires separate permission/privacy review.
 

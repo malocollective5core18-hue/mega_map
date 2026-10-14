@@ -9,7 +9,7 @@
 | Public map | `/`, `index.html:669-715` | Visitor, customer | Map load, tile failure banner, search, menu/layers, support, share. Map banner: “Map could not load. Check your internet connection and reload. You can still share your location below.” | Not tested |
 | Public area search | `/`, `index.html:684-685,1035-1122` | Visitor, customer | Searching, suggestions, empty, unavailable; search submitted to Photon. | Not tested |
 | Public layer menu | `/`, `index.html:687-702,935-979` | Visitor, customer | Satellite / shops / demand toggles, notes/status, Sign in link. | Not tested |
-| Customer key verification | `/`, `index.html:722-735,1264-1305` | New/returning customer | Invalid local fields, checking, invalid/expired/rate-limited/network/server. Generic invalid key copy. | Not tested |
+| Customer key verification | `/`, `index.html:722-735,1264-1305` | New/returning customer | Phone and service key are entered together and checked with one Continue action; no separate customer OTP step. Invalid local fields, checking, invalid/expired/rate-limited/network/server. Sheet follows visual viewport and scrolls focused input above the mobile keyboard (device behavior not tested). | Not tested |
 | No-key contact | `/`, `index.html:734-751` | Customer | WhatsApp, call, back, cancel; missing contact config uses JS alert. | Not tested |
 | Returning account welcome | `/`, `index.html:737-742,1286-1303` | Returning customer | “Welcome back”, signed-in identity, review/edit and close. | Not tested |
 | Customer details | `/`, `index.html:753-766,1308-1320` | New/returning customer | Name/business/verified phone, field errors, continue/back/cancel. | Not tested |
