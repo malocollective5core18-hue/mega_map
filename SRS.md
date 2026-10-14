@@ -23,6 +23,7 @@ The system must make it clear that a phone GPS reading is an estimate. Search re
 - Customer review, location correction before submission, explicit confirmation, and optional public-map consent.
 - Recovery of an in-progress customer submission after an accidental reload in the same browser tab while the verified session remains valid.
 - Private staff sign-in, customer map/inbox, registered-customer directory, customer edits, location copying, and map navigation.
+- Superuser creation of field-team accounts, dispatcher assignment of jobs, assigned-only field-team access, one-time arrival-distance checks, and audited pin corrections.
 - Administrator provider-code issuance and searchable/filterable history, CSV export, and audit log.
 - Protection of customer contact and exact location data from public endpoints.
 
@@ -64,6 +65,7 @@ The agent expects to:
 - See the area/place description and understand whether the pin came from GPS or was manually adjusted.
 - See a plain-language indication that GPS accuracy is an estimate, and know when to call the customer before travelling.
 - Edit customer/contact/dispatch details when authorized and correct a pin after verifying it in the field.
+- Field team members expect to see only assigned jobs, compare a one-time device fix with the job pin, and correct the assigned pin after checking the entrance.
 
 ### 3.3 Administrator, admin assistant, and service provider
 
@@ -143,6 +145,9 @@ Priorities: **M** = must-have for the next usable release; **S** = should-have; 
 | CUS-11 | M | A failed request shall show a useful field-level reason where the server can identify one, and preserve valid unsent form information for correction/retry. | Field-level 422 response recently added; verify on deployment |
 | CUS-12 | M | Duplicate or retry requests shall not create duplicate customer records. Expired/used sessions shall be explained and require a fresh company-issued code. | Current backend idempotency/single-use behavior |
 | CUS-13 | S | Customer-facing type scale and text treatment shall be visually consistent with the staff workspace while remaining readable on small screens. | Owner requested; confirm in visual review |
+| CUS-14 | M | A customer-started, short GPS capture shall retain the best device fix for up to about 15 seconds, show accuracy and an accuracy circle, allow manual pin adjustment, and stop on completion/cancel/exit. | Implemented in source; device/browser test outstanding |
+| CUS-15 | M | Customer location payload shall contain fix timestamp, reported accuracy, source, final pin, pin offset and hand-moved state; the server shall calculate age and shall not store original fix coordinates or device speed. | Implemented in source; tests outstanding |
+| CUS-16 | M | Server shall reject customer coordinates outside configured service bounds and implausible accuracy/stale/future timestamps with actionable 422 details. | Implemented in source; actual service boundary approval outstanding |
 
 ### 5.3 Staff workspace and customer records
 
@@ -162,6 +167,7 @@ Priorities: **M** = must-have for the next usable release; **S** = should-have; 
 | STF-12 | S | Admin shall be able to revoke an issued code from the UI and inspect use history. | API has revoke support; UI/history detail needs completion |
 | STF-13 | S | Staff authentication shall support enforced MFA and safe account recovery. | Not implemented |
 | STF-14 | S | Admin shall have reports for submission volume, service area, dispatch time, and location quality without exposing unnecessary contact data. | Not implemented |
+| STF-15 | M | Superuser shall create field-team accounts; dispatch staff shall assign jobs; field team shall see only assigned jobs, run a one-time arrival-distance check, and correct an assigned pin. The staff member's raw coordinate shall not be persisted. | Implemented in source; API/browser tests outstanding |
 
 ### 5.4 Privacy, consent, and data management
 
@@ -190,6 +196,7 @@ Priorities: **M** = must-have for the next usable release; **S** = should-have; 
 ### Privacy and data integrity
 
 - Customer details and exact location must only be disclosed to authorized staff for service purposes.
+- A staff arrival check is one user-initiated fix, validates its timestamp/accuracy/service bounds, returns distance, and records only a distance band in the audit event. It does not persist the staff member's coordinate or continue tracking.
 - Public display must be consent-based and approximate; revoking public consent must remove the business from the public map.
 - Coordinates shall be validated and handled at the precision the API/database accepts; the review and stored/submitted values should agree.
 - GPS accuracy is device-reported. The product must not claim “99% accurate” or guarantee the physical truth of a location.

@@ -1,6 +1,6 @@
 # Release Readiness
 
-**Status: NOT PRODUCTION-READY.** Mission 5 work is confined to local branch `fix/audit-defects`. Nothing was pushed, merged, deployed, or run against production systems.
+**Status: NOT PRODUCTION-READY.** Mission 5 is on `fix/audit-defects`; Mission 6 work is in progress on `feature/user-journeys` based on the verified development tip. No production system was accessed or deployed. Mission 6 changes have not yet been committed or pushed.
 
 ## Current gate status
 
@@ -21,6 +21,12 @@
 | Customer phone uniqueness | Not tested | Owner decision and protected-data duplicate scan are outstanding; no unique constraint was added. |
 | Production Render/Supabase settings | Not tested | Live branch, credentials, database migration, headers, backup/restore, and logging were not inspected. |
 | Legal/privacy/retention and incident ownership | Not tested | Required owner decisions and approvals remain open. |
+| Mission 6 journey documents | Pass (source review) | All eight user types are described in `docs/USER-JOURNEYS.md`; screen/role inventory is in `docs/UI-SCREEN-SPEC.md`. Browser behavior is not implied. |
+| Mission 6 GPS signals, validation and confidence | Implemented in source; tests Not tested | Code, migration and tests authored for single capture, signal storage minimization, server plausibility and confidence. Django test environment lacks `django_otp`; PostgreSQL is unavailable. |
+| Registered customers UI repair | Implemented in source; runtime Not tested | Restored missing `customersView` markup and guarded role-specific handlers; inline JavaScript syntax passes. |
+| Field-team role, assignment and arrival check | Implemented in source; API/browser tests Not tested | Superuser creation, dispatcher assignment selector, assigned-only access, transient distance check and audited pin correction added. |
+| Playwright screenshots and mobile fit | Not tested | npm registry DNS/Playwright dependency and lockfile unavailable; installed Chromium Snap refuses to launch because snapd/AppArmor confinement is unavailable. No screenshots or viewport measurements produced. |
+| Mission 6 privacy notice | Implemented in source/docs; owner/legal approval open | Bilingual `PRIVACY-NOTICE.md`, notice version and precise device signal/data wording added. Retention and service-boundary approval required. |
 
 ## Required before production
 
@@ -32,4 +38,4 @@
 6. Resolve the phone uniqueness policy and perform the approved masked duplicate scan before adding a constraint.
 7. Verify production configuration, HTTPS, backup/restore, retention, privacy/legal approval, and support/incident ownership.
 
-See [BLOCKERS-REPORT.md](BLOCKERS-REPORT.md) for task statuses and detailed next gates, and [../TEST-REPORT.md](../TEST-REPORT.md) for commands and results.
+See [BLOCKERS-REPORT.md](BLOCKERS-REPORT.md) for Mission 5 gates, [JOURNEY-REPORT.md](JOURNEY-REPORT.md) for Mission 6, and [../TEST-REPORT.md](../TEST-REPORT.md) for check results.
