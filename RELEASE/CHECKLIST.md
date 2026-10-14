@@ -17,8 +17,8 @@ Use this for each candidate. Attach command output or CI links to `READINESS.md`
 - [ ] Verify static collection and serving via WhiteNoise or the approved equivalent.
 - [ ] Verify production logs omit customer names, phone numbers, code secrets, and exact coordinates.
 - [ ] Verify CSP, CSRF/session behavior, rate limits, output escaping, security headers, and all staff authorization checks.
-- [ ] Enforce TOTP MFA for every staff role, prove wrong-code lockout and single-use recovery codes, and document who owns enrollment and account recovery. Current repository does not implement MFA.
-- [ ] Confirm `/admin/` is superuser-only. Django admin access also remains blocked for ordinary staff until MFA is enforced.
+- [ ] Complete the TOTP MFA gate on PostgreSQL and in the browser for every staff role, `/admin/`, wrong-code lockout, expired-code rejection, hashed single-use recovery, recovery regeneration, and audited re-enrollment. Local implementation uses django-otp and currently passes SQLite tests; PostgreSQL/browser checks have not run, and `MFA_RECOVERY_OWNER_EMAIL` cannot be set until the owner names the recovery person.
+- [ ] Confirm `/admin/` is superuser-only and MFA-verified. Source tests cover the verified-session gate; complete PostgreSQL/browser verification.
 
 ## Database and application tests
 

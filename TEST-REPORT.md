@@ -1,33 +1,49 @@
 # Test report
 
-## Current audit run
+## Mission 5 run
 
-Date: 10 October 2026. Branch: `fix/audit-defects`. No production database or service was contacted.
+Date: 14 October 2026. Branch: `fix/audit-defects`. No production database, Render service, Supabase project, or GitHub repository settings were accessed. All locally generated credentials were dummy values.
 
-### Mission 5 environment gate / Task 1
+### Environment and CI workflow
 
-- Network prerequisite: `getent ahosts pypi.org` and `getent ahosts github.com` returned no addresses. No package installs or external action/version verification were attempted.
-- PostgreSQL prerequisite: `pg_isready` reported no response; Docker is not installed. Per Mission 5, work stopped after CI Task 1.
-- Added `.github/workflows/ci.yml` for PostgreSQL 16 checks, migrations, tests/coverage, package audit, Ruff, full-history Gitleaks, frontend JavaScript syntax, and a fail-closed Playwright job.
-- CI workflow syntax is locally parse-checked; the workflow itself has not run in GitHub Actions. The Playwright job currently fails closed because `playwright.config.ts` and `package-lock.json` do not exist. Those belong to the browser task, which was not started under the environment gate.
-- Branch protection instructions were added to `RELEASE/CHECKLIST.md`. GitHub repository settings were not changed.
+| Item | Status | Evidence |
+|---|---|---|
+| PyPI network access | Fail | On resume `getent ahosts pypi.org` returned no addresses. A fresh environment with ensurepip was created, but `pip install -r requirements.lock` failed DNS resolution at `/simple/asgiref/`. |
+| GitHub network access | Fail | `getent ahosts github.com` returned no addresses; the earlier Gitleaks release download also failed with `Could not resolve host: github.com`. |
+| PostgreSQL | Not tested | PostgreSQL 18 cluster exists but is stopped and owned by `nobody`; `pg_isready` has no response. Docker is unavailable. |
+| GitHub Actions workflow syntax and exact job labels | Pass | YAML parsed locally; all five requested job names match exactly. |
+| GitHub Action release references | Pass | Checkout v7.0.1, setup-python v7.0.0, setup-node v7.1.0, upload-artifact v7.0.2, pip-audit v1.1.0, Ruff Action v4.1.0, and Gitleaks Action v3.0.0 exist in their official release/project pages. |
+| GitHub Actions execution | Not tested | The workflow was not triggered or observed in GitHub Actions. |
+| Repository settings | Not tested | No branch protection or repository settings were changed. |
 
-- Runtime: Python 3.14.4; Django 5.2.18; DRF 3.16.1. Runtime dependencies are pinned in `requirements.lock`, and Render's `PYTHON_VERSION` is set in `render.yaml`.
-- `DJANGO_SETTINGS_MODULE=stocktaking.settings.test python manage.py check`: Pass.
-- `DJANGO_SETTINGS_MODULE=stocktaking.settings.test python manage.py makemigrations --check --dry-run`: Pass; no changes detected.
-- `DJANGO_SETTINGS_MODULE=stocktaking.settings.test python manage.py test`: 39 tests; 38 passed and 1 PostgreSQL-only concurrency regression was skipped on SQLite.
-- D-01 PostgreSQL concurrency regression: present but skipped because PostgreSQL is unavailable. Local PostgreSQL 18 is installed but the workspace user cannot start its stopped cluster; Docker is also unavailable.
-- D-02 phone-change regression (`test_phone_change_rebinds_live_keys_and_audits_field_names`): Pass on SQLite; verifies key rebind, revoked-key preservation, old/new phone verification, and field-name-only audit metadata. PostgreSQL rerun remains required.
-- D-03 duplicate-phone protection and masked read-only pre-migration command tests: Pass on SQLite. The unique database constraint is not added because duplicate-check execution against a protected representative database copy is unavailable; this item needs the owner/data gate.
-- D-04 Render branch regression (`test_render_blueprint_targets_production_branch`): Pass on SQLite after changing the Blueprint to `production`. The live Render dashboard branch remains Not verified.
-- D-05 cleanup tests (`CodeAttemptRetentionTests`): Pass on SQLite for 24-hour pruning, preserving recent rows, and bounded opportunistic deletion.
-- `DJANGO_SETTINGS_MODULE=stocktaking.settings.prod ... python manage.py check --deploy`: Pass with a long dummy secret and explicit dummy host/origin values. No real production values were used.
-- `.venv/bin/python -m pip check`: Pass; no broken requirements.
-- PostgreSQL: Not tested. Docker is not installed, and local `pg_isready` previously reported no server response. PostgreSQL migration and concurrency gates remain open.
-- `pip-audit` and `ruff`: Not run. The packages are unavailable locally and installing them failed because package-index DNS/network access is unavailable.
-- JavaScript syntax: Pass for extracted inline scripts using `node --check` after substituting Django template booleans in temporary copies. The run includes the customer key Revoke action. No browser run was available.
-- Secret scan: A targeted regex scan of tracked Git history found no private-key blocks, AWS access keys, GitHub tokens, Slack tokens, or credentialed URLs. This is not a full Gitleaks/trufflehog scan; those tools are unavailable. The ignored `.env` was not read or scanned.
+### Local checks
+
+| Check | Status | Evidence |
+|---|---|---|
+| Fresh install from current `requirements.lock` | Not tested | The earlier install covered Django 5.2.18/DRF 3.17.2 before the latest MFA dependencies. Current install is blocked by DNS; django-otp is not available in the existing `.venv`. |
+| `manage.py check` against current changes | Not tested | Current import is blocked because django-otp is unavailable. Earlier pre-MFA check passed. |
+| `manage.py check --deploy` against current changes | Not tested | Current import is blocked because django-otp is unavailable. Earlier dummy-only deploy check passed against pre-MFA dependencies. |
+| `makemigrations --check --dry-run` against current changes | Not tested | Current import is blocked because django-otp is unavailable. Earlier migration check passed before the MFA models/migration. |
+| Full Django suite on SQLite | Pass | MFA run: 47 tests; 46 passed, 1 PostgreSQL-only concurrency test skipped. This preceded only the final MFA table heading and example environment variable documentation edits. |
+| PostgreSQL suite and concurrency regression repeated 20 times | Not tested | PostgreSQL unavailable locally; SQLite skips this regression. CI evidence is also unavailable. |
+| `pip check` | Pass | No broken requirements in the fresh environment. |
+| `pip-audit -r requirements.lock` | Pass | After updating DRF to 3.17.2, no known vulnerabilities were reported. DRF 3.16.1 had two advisories and was the real dependency failure fixed. |
+| `ruff check .` | Pass | Ruff 0.17.0; all checks passed. |
+| Ruff formatting check | Pass | All 55 Python files passed `ruff format --check`. |
+| Frontend JavaScript syntax | Pass | `scripts/check_frontend_js.py` checked five inline script blocks. |
+| Full-history Gitleaks scan | Not tested | Official binary download was blocked by GitHub DNS failure. No secret finding is claimed. The ignored `.env` was not read. |
+
+### Release blocker tasks
+
+| Task | Status | Evidence / reason |
+|---|---|---|
+| Staff TOTP MFA, recovery, lockout, reenrollment | Pass | Implemented with django-otp and covered by eight focused tests within the 47-test SQLite run. PostgreSQL/browser verification is still open; recovery owner is not named/configured. |
+| Complete role/endpoint matrix | Fail | Existing matrix covers core directory, export, code-history, revoke, and audit roles but does not cover every endpoint, method, and role pairing. |
+| Playwright and CSP enforcement | Fail | No `package-lock.json` or `playwright.config.ts`; CI deliberately fails closed. CSP remains report-only and has not been browser-validated. Chromium exists locally, but no Playwright suite is configured. |
+| Customer phone uniqueness constraint | Not tested | No constraint added. Owner decision and duplicate scan against a protected representative database are outstanding. |
+| Runtime/config checks | Partial | Local checks pass as above; real Render, Supabase, HTTPS headers, production PostgreSQL migrations, backups, and secrets were not accessed. |
+| Documentation updates | Pass | `RELEASE/BLOCKERS-REPORT.md`, this report, and `RELEASE/READINESS.md` now record task status and blockers. |
 
 ## Release status
 
-Not release-ready. SQLite does not meet the required PostgreSQL verification gate. TOTP MFA is not implemented; CSP remains report-only; production backup/restore, retention/anonymisation, legal/privacy approval, and real-device/browser checks remain open. See `RELEASE/FIX-REPORT.md` for defect-by-defect status and owner commands.
+Not release-ready. Do not treat the skipped PostgreSQL test as a pass. MFA, a complete role matrix, browser tests under enforced CSP, full-history secret scanning, owner/data approval for uniqueness, and production operations evidence remain open. The branch is local and unpushed; no deployment was performed.

@@ -13,7 +13,10 @@ FILES = (
     ROOT / "templates/staff/login.html",
     ROOT / "templates/staff/dashboard.html",
 )
-TEMPLATE_BOOL = re.compile(r'\{\{\s*(is_admin|is_provider|is_superuser)\|yesno:"true,false"\s*\}\}')
+TEMPLATE_BOOL = re.compile(
+    r'\{\{\s*(is_admin|is_provider|is_superuser|is_mfa_recovery_owner)'
+    r'\|yesno:"true,false"\s*\}\}'
+)
 INLINE_SCRIPT = re.compile(r"(?is)<script(?:\s[^>]*)?>(.*?)</script\s*>")
 
 

@@ -1,37 +1,35 @@
 # Release Readiness
 
-**Status: NOT PRODUCTION-READY.** This audit made no deployment, production database, or Supabase changes. The candidate remains on local branch `fix/audit-defects`; it was not pushed, merged, or tagged.
+**Status: NOT PRODUCTION-READY.** Mission 5 work is confined to local branch `fix/audit-defects`. Nothing was pushed, merged, deployed, or run against production systems.
 
-## Mission 4 verification snapshot
+## Current gate status
 
 | Gate | Status | Evidence / blocker |
 |---|---|---|
-| Django source suite | Partial | 39 SQLite tests: 38 passed, 1 PostgreSQL-only concurrent submission test skipped. SQLite is not the required release database. |
-| PostgreSQL empty migration and full suite | Not tested | Docker unavailable; the installed local PostgreSQL cluster could not be started with workspace permissions. |
-| Django check | Pass | Test settings `manage.py check` found no issues. |
-| Production deploy check | Pass | `check --deploy` passed using dummy secret/host/origin values; not evidence for the live Render configuration. |
-| Migration consistency | Pass | `makemigrations --check --dry-run`: no changes detected. Migration execution on PostgreSQL remains unverified. |
-| Dependency reproducibility | Partial | Runtime packages pinned in `requirements.lock`, build uses it, Python 3.14.4 declared. Fresh isolated network install and lock hashes are not verified. |
-| `pip-audit` and Ruff | Not tested | Not installed; package-index DNS blocked installation. |
-| Browser and real devices | Not tested | No Playwright/browser run; key generation, CSP compatibility, GPS, pin drag, and Google Maps handoff need manual browser/device checks. |
-| Render branch | Partial | Blueprint names `production`; live Render watched branch is unverified. |
-| TOTP MFA | Fail | MFA enrollment, recovery, re-enrollment, and lockout are not implemented. Release blocker for routine live data. |
-| CSP | Partial | Report-only header exists. Inline script/style compatibility has not been observed in browsers; enforcement is not enabled. |
-| Django admin | Pass in source test | `/admin/` now checks active staff superuser status. It is not protected by MFA yet. |
-| Phone uniqueness | Needs owner decision | Duplicate-check command exists, but no protected representative dataset was checked; no unique DB constraint is present. |
-| Backups, restore, region, incident response | Not verified | Owner must document region, restore proof, recovery objective, response lead, and support/notification contacts. |
-| Legal, privacy, retention | Not approved | Privacy notice/legal approval and retention/removal decisions remain open. |
-| Secret scan | Partial | Prior targeted scan found no high-confidence secret in tracked source history. Ignored `.env` was deliberately not read; run a trusted full-history scanner before publication. |
+| Fresh dependency install | Not tested | The earlier clean install passed before django-otp and qrcode were added to the lock. The new clean install could not resolve PyPI DNS on resume. |
+| Django checks and migration drift | Not tested | Earlier checks passed against the prior dependency set; current code cannot import because django-otp is missing from the available environments. |
+| SQLite test suite | Pass | MFA implementation run: 47 tests, 46 passed and 1 PostgreSQL-only concurrency test skipped. This run preceded only the MFA recovery table heading and `.env.example` edits. |
+| PostgreSQL migrations and 20 concurrency repetitions | Not tested | Local PostgreSQL is down and Docker is unavailable. |
+| Dependency security audit | Pass | `pip-audit` found no known vulnerabilities after DRF was upgraded to 3.17.2. |
+| Ruff | Pass | Ruff 0.17.0 check and formatting checks passed. |
+| Frontend syntax | Pass | Five inline JavaScript blocks checked. |
+| CI workflow definitions | Pass | YAML and exact requested job labels checked; pinned Action versions exist. GitHub Actions run not observed. |
+| Full-history secret scan | Not tested | Gitleaks release fetch failed on GitHub DNS. No clean-history claim is made. `.env` was not read. |
+| TOTP MFA | Pass | django-otp TOTP, recovery codes, lockout, audit, session/API gating, and named-owner reenrollment are implemented and covered by focused SQLite tests. PostgreSQL/browser checks and selection/configuration of the recovery owner remain open. |
+| Full endpoint/role matrix | Fail | Current tests cover key permissions but not all endpoint/method/role combinations. |
+| Playwright and enforced CSP | Fail | Playwright config and npm lockfile are absent; CSP remains report-only. |
+| Customer phone uniqueness | Not tested | Owner decision and protected-data duplicate scan are outstanding; no unique constraint was added. |
+| Production Render/Supabase settings | Not tested | Live branch, credentials, database migration, headers, backup/restore, and logging were not inspected. |
+| Legal/privacy/retention and incident ownership | Not tested | Required owner decisions and approvals remain open. |
 
-## Release blockers
+## Required before production
 
-1. Complete staff TOTP MFA and test enrollment, wrong-code throttling/lockout, single-use recovery, and administrator reenrollment.
-2. Provision or start a PostgreSQL test environment; run migrations from empty and protected previous-schema copies, then run the full suite including the concurrency test.
-3. Run `pip-audit`, Ruff, and a trusted full-history secret scanner in a network-enabled isolated environment.
-4. Run the phone duplicate checker against a protected representative data copy and resolve the owner policy before any unique constraint migration.
-5. Verify CSP report-only compatibility in a real browser, then prepare and review the enforced policy. Verify public Leaflet SRI network loading.
-6. Confirm Render's live branch, verify production host/secrets/configuration, and complete Supabase backup/restore and incident ownership records.
-7. Perform manual key issuance/revoke/refresh checks and real Android/iPhone GPS, pin, and map-navigation checks.
-8. Approve privacy/legal copy and retention/removal policy.
+1. Re-run TOTP MFA tests from the current lock, then verify PostgreSQL and browser behavior and name/configure the MFA recovery owner.
+2. Complete role authorization coverage for all sensitive endpoints and methods.
+3. Run PostgreSQL migrations and tests, including at least 20 concurrency regressions.
+4. Pass a redacted full-history Gitleaks scan. Stop and report safely if any secret appears.
+5. Add Playwright coverage and test with CSP enforcement in a browser.
+6. Resolve the phone uniqueness policy and perform the approved masked duplicate scan before adding a constraint.
+7. Verify production configuration, HTTPS, backup/restore, retention, privacy/legal approval, and support/incident ownership.
 
-See [FIX-REPORT.md](FIX-REPORT.md) for defect statuses, regression names, commit IDs, owner tasks, and merge/tag/rollback commands. See [CHECKLIST.md](CHECKLIST.md) for the gate-by-gate release checklist.
+See [BLOCKERS-REPORT.md](BLOCKERS-REPORT.md) for task statuses and detailed next gates, and [../TEST-REPORT.md](../TEST-REPORT.md) for commands and results.

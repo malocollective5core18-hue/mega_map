@@ -1,4 +1,5 @@
 import hashlib
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
@@ -8,12 +9,15 @@ from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import close_old_connections, connection
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
+from django_otp.oath import TOTP
+from django_otp.plugins.otp_totp.models import TOTPDevice
 from rest_framework.test import APIClient
 
 from .models import (
@@ -25,6 +29,7 @@ from .models import (
     DemandCell,
     ProviderCode,
     VerificationSession,
+    StaffMFARecoveryCode,
 )
 from .security import code_attempts_throttled, hash_value
 from .services import find_duplicate as real_find_duplicate
@@ -428,6 +433,151 @@ class ConcurrentSubmissionTests(TransactionTestCase):
         self.assertEqual(CustomerBusiness.objects.filter(phone=phone).count(), 1)
 
 
+class StaffMFATests(TestCase):
+    def setUp(self):
+        throttle_patch = patch("core.throttles.StaffLoginThrottle.allow_request", return_value=True)
+        throttle_patch.start()
+        self.addCleanup(throttle_patch.stop)
+        self.user = get_user_model().objects.create_superuser(
+            username="mfa-root",
+            email="mfa-root@example.test",
+            password="safe-test-password",
+        )
+        self.client = APIClient(enforce_csrf_checks=True)
+
+    def password_login(self):
+        csrf = self.client.get("/api/auth/csrf").data["csrfToken"]
+        return self.client.post(
+            "/api/auth/login",
+            {"email": self.user.email, "password": "safe-test-password"},
+            format="json",
+            HTTP_X_CSRFTOKEN=csrf,
+        )
+
+    def mfa_post(self, path, data):
+        csrf = self.client.get("/api/auth/csrf").data["csrfToken"]
+        return self.client.post(path, data, format="json", HTTP_X_CSRFTOKEN=csrf)
+
+    @staticmethod
+    def current_code(device, *, at=None):
+        generator = TOTP(device.bin_key, device.step, device.t0, device.digits)
+        generator.time = time.time() if at is None else at
+        return f"{generator.token():0{device.digits}d}"
+
+    def enroll(self):
+        login_response = self.password_login()
+        self.assertTrue(login_response.data.get("mfaEnrollmentRequired"))
+        enrollment_response = self.mfa_post("/api/auth/mfa/enroll", {})
+        self.assertEqual(enrollment_response.status_code, 200)
+        device = TOTPDevice.objects.get(user=self.user, confirmed=False)
+        response = self.mfa_post(
+            "/api/auth/mfa/confirm", {"code": self.current_code(device)}
+        )
+        self.assertEqual(response.status_code, 200)
+        return device, response.data["recoveryCodes"]
+
+    def test_staff_password_login_requires_mfa_enrollment_and_blocks_staff_data(self):
+        response = self.password_login()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.get("mfaEnrollmentRequired"))
+        self.assertFalse(response.data.get("authenticated", False))
+        denied = self.client.get("/api/admin/businesses")
+        self.assertEqual(denied.status_code, 403)
+
+    def test_mfa_enrollment_provides_qr_and_manual_key(self):
+        self.password_login()
+        csrf = self.client.get("/api/auth/csrf").data["csrfToken"]
+        response = self.client.post(
+            "/api/auth/mfa/enroll", {}, format="json", HTTP_X_CSRFTOKEN=csrf
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["secret"])
+        self.assertTrue(response.data["otpauthUrl"].startswith("otpauth://totp/"))
+        self.assertTrue(response.data["qrSvg"].startswith("data:image/svg+xml;base64,"))
+
+    def test_expired_totp_code_is_rejected(self):
+        device, _ = self.enroll()
+        self.client.logout()
+        login_response = self.password_login()
+        self.assertTrue(login_response.data["mfaRequired"])
+        stale_code = self.current_code(device, at=time.time() - 300)
+        response = self.mfa_post("/api/auth/mfa/verify", {"code": stale_code})
+        self.assertEqual(response.status_code, 401)
+        event = AuditLog.objects.get(action="auth.mfa_failed")
+        self.assertEqual(event.metadata, {"reason": "totp_invalid"})
+        self.assertNotIn(stale_code, str(event.metadata))
+
+    def test_wrong_totp_locks_out_challenge(self):
+        device, _ = self.enroll()
+        self.client.logout()
+        self.password_login()
+        for _ in range(5):
+            response = self.mfa_post("/api/auth/mfa/verify", {"code": "000000"})
+        self.assertEqual(response.status_code, 401)
+        state = self.user.mfa_failure_state
+        self.assertIsNotNone(state.locked_until)
+        valid_code = self.current_code(device)
+        locked_response = self.mfa_post("/api/auth/mfa/verify", {"code": valid_code})
+        self.assertEqual(locked_response.status_code, 401)
+
+    def test_recovery_code_is_hashed_single_use_and_audited(self):
+        _, codes = self.enroll()
+        self.assertEqual(len(codes), 10)
+        row = StaffMFARecoveryCode.objects.filter(user=self.user).first()
+        self.assertIsNotNone(row)
+        self.assertNotEqual(row.code_hash, codes[0])
+        self.assertTrue(check_password(codes[0], row.code_hash))
+        self.client.logout()
+        self.password_login()
+        first = self.mfa_post("/api/auth/mfa/recovery", {"code": codes[0]})
+        self.assertEqual(first.status_code, 200)
+        self.assertIsNotNone(StaffMFARecoveryCode.objects.get(pk=row.pk).used_at)
+        self.client.logout()
+        self.password_login()
+        second = self.mfa_post("/api/auth/mfa/recovery", {"code": codes[0]})
+        self.assertEqual(second.status_code, 401)
+        self.assertTrue(AuditLog.objects.filter(action="auth.mfa_succeeded").exists())
+
+    def test_owner_reenrollment_fails_closed_without_configured_owner(self):
+        _, _ = self.enroll()
+        response = self.mfa_post(
+            f"/api/admin/staff-users/{self.user.pk}/mfa-reenroll", {}
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(TOTPDevice.objects.filter(user=self.user, confirmed=True).exists())
+
+    def test_configured_recovery_owner_can_reset_staff_mfa_with_audit(self):
+        self.enroll()
+        with override_settings(MFA_RECOVERY_OWNER_EMAIL=self.user.email.lower()):
+            response = self.mfa_post(
+                f"/api/admin/staff-users/{self.user.pk}/mfa-reenroll", {}
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(TOTPDevice.objects.filter(user=self.user).exists())
+        self.assertTrue(
+            AuditLog.objects.filter(action="auth.mfa_reenrolled_by_owner").exists()
+        )
+
+    def test_verified_staff_can_regenerate_recovery_codes(self):
+        _, old_codes = self.enroll()
+        device = TOTPDevice.objects.get(user=self.user, confirmed=True)
+        next_step = (int(time.time()) // 30 + 1) * 30 + 1
+        response = self.mfa_post(
+            "/api/auth/mfa/recovery/regenerate",
+            {"code": self.current_code(device, at=next_step)},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["recoveryCodes"]), 10)
+        current_hashes = list(
+            StaffMFARecoveryCode.objects.filter(user=self.user, used_at__isnull=True).values_list(
+                "code_hash", flat=True
+            )
+        )
+        self.assertFalse(
+            any(check_password(code, hashed) for code in old_codes for hashed in current_hashes)
+        )
+
+
 class StaffPermissionTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -471,6 +621,9 @@ class StaffPermissionTests(TestCase):
         )
         user.groups.add(group)
         self.client.force_login(user)
+        session = self.client.session
+        session["mfa_verified_user_id"] = str(user.pk)
+        session.save()
         self.assertContains(self.client.get("/staff/"), "Dispatch")
 
     def test_django_admin_requires_superuser_even_for_other_staff(self):
@@ -482,11 +635,14 @@ class StaffPermissionTests(TestCase):
         )
         staff_user.groups.add(Group.objects.get_or_create(name="admin")[0])
         self.client.force_login(staff_user)
-        self.assertEqual(self.client.get("/admin/").status_code, 302)
+        self.assertEqual(self.client.get("/admin/").status_code, 403)
         root = get_user_model().objects.create_superuser(
             username="root-site", email="root-site@example.test", password="safe-test-password"
         )
         self.client.force_login(root)
+        session = self.client.session
+        session["mfa_verified_user_id"] = str(root.pk)
+        session.save()
         self.assertEqual(self.client.get("/admin/").status_code, 200)
 
     def test_pin_correction_is_audited_and_used_for_navigation(self):

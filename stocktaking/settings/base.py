@@ -27,6 +27,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
+    "django_otp",
+    "django_otp.plugins.otp_totp",
     "core",
 ]
 
@@ -40,6 +42,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
+    "core.middleware.StaffMFARequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -138,6 +142,11 @@ PUBLIC_API_RATE = os.environ.get("PUBLIC_API_RATE", "60/min")
 CODE_VERIFY_RATE = os.environ.get("CODE_VERIFY_RATE", "30/hour")
 SUBMISSION_RATE = os.environ.get("SUBMISSION_RATE", "10/hour")
 STAFF_LOGIN_RATE = os.environ.get("STAFF_LOGIN_RATE", "5/min")
+MFA_RECOVERY_OWNER_EMAIL = os.environ.get("MFA_RECOVERY_OWNER_EMAIL", "").strip().lower()
+MFA_LOCKOUT_FAILURES = 5
+MFA_LOCKOUT_MINUTES = 15
+MFA_CHALLENGE_SECONDS = 300
+OTP_TOTP_ISSUER = "Mauzosheet, Hotbano & Services"
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "")
 COMPANY_WHATSAPP_NUMBER = os.environ.get("COMPANY_WHATSAPP_NUMBER", "")
 COMPANY_PHONE_NUMBER = os.environ.get("COMPANY_PHONE_NUMBER", "")

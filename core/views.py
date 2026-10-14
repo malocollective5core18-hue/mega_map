@@ -1,4 +1,5 @@
 import csv
+import base64
 import hashlib
 import hmac
 import io
@@ -8,12 +9,16 @@ from urllib.parse import quote
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, transaction
 from django.db.models import F, Q
 from django.http import HttpResponse
 from django.middleware.csrf import CsrfViewMiddleware, get_token
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
+from django_otp.plugins.otp_totp.models import TOTPDevice
+import qrcode
+from qrcode.image.svg import SvgPathImage
 from rest_framework import status
 from rest_framework.decorators import (
     api_view,
@@ -33,7 +38,21 @@ from .models import (
     IdempotencyRecord,
     ProviderCode,
     ServiceVisit,
+    StaffMFAFailure,
+    StaffMFARecoveryCode,
     VerificationSession,
+)
+from .mfa import (
+    clear_mfa_failures,
+    consume_recovery_code,
+    current_staff_device,
+    establish_verified_session,
+    is_mfa_verified,
+    is_staff_user,
+    mfa_locked,
+    pending_mfa_user,
+    record_mfa_failure,
+    issue_recovery_codes,
 )
 from .permissions import AuditIsAuthenticated
 from .security import (
@@ -664,10 +683,6 @@ def auth_login(request):
         return error(
             "invalid_credentials", "Email or password is incorrect.", status.HTTP_401_UNAUTHORIZED
         )
-    login(raw_request, user)
-    record_audit(
-        request=request, actor=user, action="auth.login", object_type="User", object_id=user.pk
-    )
     if user.is_superuser:
         role = "superuser"
     elif user.groups.filter(name="admin").exists():
@@ -676,7 +691,177 @@ def auth_login(request):
         role = "service_provider"
     else:
         role = "dispatcher"
-    return Response({"authenticated": True, "role": role})
+
+    if current_staff_device(user, confirmed=True):
+        logout(raw_request)
+        raw_request.session["mfa_pending_user_id"] = user.pk
+        raw_request.session["mfa_pending_expires_at"] = (
+            timezone.now().timestamp() + settings.MFA_CHALLENGE_SECONDS
+        )
+        raw_request.session.set_expiry(settings.MFA_CHALLENGE_SECONDS)
+        return Response({"authenticated": False, "mfaRequired": True})
+
+    login(raw_request, user)
+    raw_request.session.pop("mfa_verified_user_id", None)
+    return Response({"authenticated": False, "mfaEnrollmentRequired": True, "role": role})
+
+
+def mfa_csrf_valid(request):
+    raw_request = request._request
+    failure = CsrfViewMiddleware(lambda req: HttpResponse()).process_view(
+        raw_request, lambda req: None, (), {}
+    )
+    return failure is None
+
+
+def mfa_error():
+    return error(
+        "invalid_mfa", "The verification details could not be accepted. Try again.", 401
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([StaffLoginThrottle])
+def auth_mfa_verify(request):
+    if not mfa_csrf_valid(request):
+        return error("csrf_failed", "Refresh the sign-in page and try again.", 403)
+    user = pending_mfa_user(request)
+    token = request.data.get("code", "")
+    if user is None or not isinstance(token, str) or mfa_locked(user):
+        return mfa_error()
+    device = current_staff_device(user, confirmed=True)
+    if device is None or not device.verify_token(token.strip()):
+        record_mfa_failure(request, user, "totp_invalid")
+        return mfa_error()
+    establish_verified_session(request, user, method="totp")
+    return Response({"authenticated": True})
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([StaffLoginThrottle])
+def auth_mfa_recovery(request):
+    if not mfa_csrf_valid(request):
+        return error("csrf_failed", "Refresh the sign-in page and try again.", 403)
+    user = pending_mfa_user(request)
+    if user is None or mfa_locked(user):
+        return mfa_error()
+    with transaction.atomic():
+        if not consume_recovery_code(user, request.data.get("code", "")):
+            record_mfa_failure(request, user, "recovery_invalid")
+            return mfa_error()
+    establish_verified_session(request, user, method="recovery")
+    return Response({"authenticated": True})
+
+
+@api_view(["POST"])
+@permission_classes([AuditIsAuthenticated])
+def auth_mfa_enroll(request):
+    if not mfa_csrf_valid(request):
+        return error("csrf_failed", "Refresh the sign-in page and try again.", 403)
+    user = request.user
+    if not is_staff_user(user) or current_staff_device(user, confirmed=True):
+        return error("not_allowed", "Staff MFA enrollment is unavailable.", 403)
+    device = current_staff_device(user, confirmed=False)
+    if device is None:
+        device = TOTPDevice.objects.create(user=user, name="Authenticator", confirmed=False)
+    provisioning_uri = device.config_url
+    qr = qrcode.make(provisioning_uri, image_factory=SvgPathImage)
+    qr_file = io.BytesIO()
+    qr.save(qr_file)
+    qr_data = base64.b64encode(qr_file.getvalue()).decode("ascii")
+    secret = base64.b32encode(device.bin_key).decode("ascii").rstrip("=")
+    return Response(
+        {
+            "secret": secret,
+            "otpauthUrl": provisioning_uri,
+            "qrSvg": "data:image/svg+xml;base64," + qr_data,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AuditIsAuthenticated])
+def auth_mfa_confirm(request):
+    if not mfa_csrf_valid(request):
+        return error("csrf_failed", "Refresh the sign-in page and try again.", 403)
+    user = request.user
+    if not is_staff_user(user) or current_staff_device(user, confirmed=True):
+        return error("not_allowed", "Staff MFA enrollment is unavailable.", 403)
+    device = current_staff_device(user, confirmed=False)
+    token = request.data.get("code", "")
+    if device is None or not isinstance(token, str) or mfa_locked(user):
+        return mfa_error()
+    if not device.verify_token(token.strip()):
+        record_mfa_failure(request, user, "enrollment_totp_invalid")
+        return mfa_error()
+    device.confirmed = True
+    device.save(update_fields=["confirmed"])
+    codes = issue_recovery_codes(user)
+    establish_verified_session(request, user, method="enrollment")
+    record_audit(
+        request=request,
+        actor=user,
+        action="auth.mfa_enrolled",
+        object_type="User",
+        object_id=user.pk,
+    )
+    return Response({"authenticated": True, "recoveryCodes": codes})
+
+
+@api_view(["POST"])
+@permission_classes([AuditIsAuthenticated])
+def auth_mfa_regenerate_recovery(request):
+    if not mfa_csrf_valid(request):
+        return error("csrf_failed", "Refresh the sign-in page and try again.", 403)
+    user = request.user
+    device = current_staff_device(user, confirmed=True)
+    token = request.data.get("code", "")
+    if not is_staff_user(user) or not is_mfa_verified(request) or device is None:
+        return error("not_allowed", "Verified staff sign-in is required.", 403)
+    if not isinstance(token, str) or not device.verify_token(token.strip()):
+        record_mfa_failure(request, user, "recovery_regeneration_totp_invalid")
+        return mfa_error()
+    codes = issue_recovery_codes(user)
+    record_audit(
+        request=request,
+        actor=user,
+        action="auth.mfa_recovery_regenerated",
+        object_type="User",
+        object_id=user.pk,
+    )
+    return Response({"recoveryCodes": codes})
+
+
+@api_view(["POST"])
+@permission_classes([AuditIsAuthenticated])
+def admin_mfa_reenroll(request, user_id):
+    if not mfa_csrf_valid(request):
+        return error("csrf_failed", "Refresh the sign-in page and try again.", 403)
+    owner_email = settings.MFA_RECOVERY_OWNER_EMAIL
+    if (
+        not owner_email
+        or not request.user.is_superuser
+        or not is_mfa_verified(request)
+        or request.user.email.strip().lower() != owner_email
+    ):
+        return error("not_allowed", "The configured MFA recovery owner must approve this action.", 403)
+    user = get_user_model().objects.filter(pk=user_id, is_active=True).first()
+    if user is None or not is_staff_user(user):
+        return error("not_found", "Staff account not found.", 404)
+    TOTPDevice.objects.filter(user=user).delete()
+    StaffMFARecoveryCode.objects.filter(user=user).delete()
+    StaffMFAFailure.objects.filter(user=user).delete()
+    record_audit(
+        request=request,
+        actor=request.user,
+        action="auth.mfa_reenrolled_by_owner",
+        object_type="User",
+        object_id=user.pk,
+        metadata={"owner_id": request.user.pk},
+    )
+    return Response({"mfaEnrollmentRequired": True})
 
 
 @api_view(["GET", "POST"])

@@ -6,7 +6,8 @@
 - Runtime pins and Python version are declared, and customer key history uses indexed phone HMACs (secret rotation requires a rehash plan).
 - Public Leaflet assets are pinned to version 1.9.4 and loaded with Subresource Integrity verification.
 - Staff audit coverage now records failed sign-in, denied authorization, staff-user listing, new-customer key verification, and changed field names without storing submitted values.
-- Django `/admin/` is restricted to superusers; a report-only CSP header is available for compatibility observation. MFA is still a release blocker.
+- Django `/admin/` is restricted to superusers; a report-only CSP header is available for compatibility observation. Staff TOTP MFA now uses django-otp, with hashed single-use recovery codes, throttling/lockout, verified-session gating, audit events, and recovery-owner-controlled re-enrollment. PostgreSQL/browser evidence and the named recovery owner remain release gates.
+- DRF was upgraded to 3.17.2 after pip-audit identified advisories in 3.16.1. Ruff findings were corrected and action references updated for current Node 24 runners.
 - Issued customer-key history now has a confirmed Revoke action.
 
 Changes are recorded here for release and deployment reviews.

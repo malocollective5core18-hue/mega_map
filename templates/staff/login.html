@@ -4,20 +4,33 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Staff sign in · Mauzosheet</title>
   <style>
-    :root{font:14px system-ui,sans-serif;color:#172a24;background:#f3f6f3}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:1rem}.card{background:#fff;width:min(100%,23rem);padding:1.5rem;border-radius:.85rem;box-shadow:0 12px 40px #163a2418}h1{font-size:1.15rem;margin:0 0 .3rem}p{font-size:.88rem;color:#64736c;margin:.25rem 0 1rem}label{display:block;font-size:.86rem;font-weight:650;margin:.8rem 0 .3rem}input{width:100%;padding:.65rem .7rem;border:1px solid #c7d3cb;border-radius:.5rem;font:inherit;font-size:.9rem}button{width:100%;margin-top:1rem;padding:.7rem;border:0;border-radius:.55rem;background:#0f3d2e;color:white;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer}#message{min-height:1.3rem;color:#9a3026}a{font-size:.88rem;color:#0f3d2e}
+    :root{font:14px system-ui,sans-serif;color:#172a24;background:#f3f6f3}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:1rem}.card{background:#fff;width:min(100%,26rem);padding:1.5rem;border-radius:.85rem;box-shadow:0 12px 40px #163a2418}h1{font-size:1.15rem;margin:0 0 .3rem}h2{font-size:1rem;margin:1rem 0 .35rem}p{font-size:.88rem;color:#64736c;margin:.25rem 0 1rem}label{display:block;font-size:.86rem;font-weight:650;margin:.8rem 0 .3rem}input{width:100%;padding:.65rem .7rem;border:1px solid #c7d3cb;border-radius:.5rem;font:inherit;font-size:.9rem}button{width:100%;margin-top:1rem;padding:.7rem;border:0;border-radius:.55rem;background:#0f3d2e;color:white;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer}button.secondary{background:#e8efeb;color:#173a2e}#message{min-height:1.3rem;color:#9a3026}.secret{padding:.65rem;background:#eef4f0;border-radius:.4rem;overflow-wrap:anywhere;font-family:monospace}#qr{display:block;width:168px;height:168px;margin:.75rem auto}#recoveryCodes{white-space:pre-wrap;padding:.75rem;background:#eef4f0;border-radius:.5rem;font: .92rem monospace}a{font-size:.88rem;color:#0f3d2e}
   </style>
 </head>
 <body>
   <main class="card"><h1>Mauzosheet · Staff</h1><p>Sign in to manage customer locations and dispatch.</p>
     <form id="login" autocomplete="on"><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" required>
       <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>
-      <button>Sign in</button><p id="message" role="status" aria-live="polite"></p>
-    </form><a href="/">Back to public map</a>
+      <button>Sign in</button>
+    </form>
+    <form id="mfaChallenge" hidden><h2>Two-step verification</h2><p>Enter the current code from your authenticator app.</p><label for="mfaCode">Authenticator code</label><input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="8" required><button>Verify</button><button class="secondary" id="useRecovery" type="button">Use a recovery code</button></form>
+    <form id="mfaRecovery" hidden><h2>Recovery code</h2><label for="recoveryCode">Unused recovery code</label><input id="recoveryCode" autocomplete="one-time-code" required><button>Verify recovery code</button><button class="secondary" id="useAuthenticator" type="button">Use authenticator instead</button></form>
+    <section id="mfaEnrollment" hidden><h2>Set up two-step verification</h2><p>Scan this QR code, or enter the setup key manually in your authenticator app.</p><img id="qr" alt="Authenticator setup QR code"><p class="secret" id="manualKey"></p><form id="confirmEnrollment"><label for="enrollCode">Authenticator code</label><input id="enrollCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="8" required><button>Confirm setup</button></form></section>
+    <section id="recoveryPanel" hidden><h2>Save your recovery codes</h2><p>Each code works once. Save these somewhere private before continuing. They will not be shown again.</p><pre id="recoveryCodes"></pre><button id="continueStaff" type="button">Continue to staff dashboard</button></section>
+    <p id="message" role="status" aria-live="polite"></p><a href="/">Back to public map</a>
   </main>
   <script>
     const form=document.querySelector('#login'), message=document.querySelector('#message');
+    const challenge=document.querySelector('#mfaChallenge'), recovery=document.querySelector('#mfaRecovery'), enrollment=document.querySelector('#mfaEnrollment'), recoveryPanel=document.querySelector('#recoveryPanel');
     async function csrf(){const r=await fetch('/api/auth/csrf',{credentials:'same-origin'});return (await r.json()).csrfToken}
-    form.addEventListener('submit',async e=>{e.preventDefault();message.textContent='';try{const token=await csrf(),r=await fetch('/api/auth/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':token},body:JSON.stringify({email:form.email.value,password:form.password.value})}),d=await r.json();if(!r.ok)throw Error(d.error?.message||'Sign in failed.');location.href='/staff/'}catch(err){message.textContent=err.message||'Unable to connect. Try again.'}});
+    async function post(path,body){const token=await csrf(),r=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':token},body:JSON.stringify(body)}),d=await r.json();if(!r.ok)throw Error(d.error?.message||'Unable to complete this step.');return d}
+    form.addEventListener('submit',async e=>{e.preventDefault();message.textContent='';try{const d=await post('/api/auth/login',{email:form.email.value,password:form.password.value});if(d.mfaRequired){form.hidden=true;challenge.hidden=false;return}if(d.mfaEnrollmentRequired){form.hidden=true;const setup=await post('/api/auth/mfa/enroll',{});document.querySelector('#qr').src=setup.qrSvg;document.querySelector('#manualKey').textContent=setup.secret;enrollment.hidden=false;return}location.href='/staff/'}catch(err){message.textContent=err.message||'Unable to connect. Try again.'}});
+    challenge.addEventListener('submit',async e=>{e.preventDefault();try{await post('/api/auth/mfa/verify',{code:document.querySelector('#mfaCode').value});location.href='/staff/'}catch(err){message.textContent=err.message}});
+    document.querySelector('#useRecovery').addEventListener('click',()=>{challenge.hidden=true;recovery.hidden=false});
+    document.querySelector('#useAuthenticator').addEventListener('click',()=>{recovery.hidden=true;challenge.hidden=false});
+    recovery.addEventListener('submit',async e=>{e.preventDefault();try{await post('/api/auth/mfa/recovery',{code:document.querySelector('#recoveryCode').value});location.href='/staff/'}catch(err){message.textContent=err.message}});
+    document.querySelector('#confirmEnrollment').addEventListener('submit',async e=>{e.preventDefault();try{const d=await post('/api/auth/mfa/confirm',{code:document.querySelector('#enrollCode').value});document.querySelector('#recoveryCodes').textContent=d.recoveryCodes.join('\n');enrollment.hidden=true;recoveryPanel.hidden=false}catch(err){message.textContent=err.message}});
+    document.querySelector('#continueStaff').addEventListener('click',()=>{location.href='/staff/'});
   </script>
 </body>
 </html>

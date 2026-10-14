@@ -13,6 +13,20 @@ urlpatterns = [
     path("auth/csrf", views.auth_csrf, name="auth-csrf"),
     path("auth/login", views.auth_login, name="auth-login"),
     path("auth/logout", views.auth_logout, name="auth-logout"),
+    path("auth/mfa/verify", views.auth_mfa_verify, name="auth-mfa-verify"),
+    path("auth/mfa/recovery", views.auth_mfa_recovery, name="auth-mfa-recovery"),
+    path("auth/mfa/enroll", views.auth_mfa_enroll, name="auth-mfa-enroll"),
+    path("auth/mfa/confirm", views.auth_mfa_confirm, name="auth-mfa-confirm"),
+    path(
+        "auth/mfa/recovery/regenerate",
+        views.auth_mfa_regenerate_recovery,
+        name="auth-mfa-recovery-regenerate",
+    ),
+    path(
+        "admin/staff-users/<int:user_id>/mfa-reenroll",
+        views.admin_mfa_reenroll,
+        name="admin-staff-mfa-reenroll",
+    ),
     path("admin/staff-users", views.admin_staff_users, name="admin-staff-users"),
     path("admin/businesses", views.admin_businesses, name="admin-businesses"),
     path(

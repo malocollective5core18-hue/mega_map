@@ -1,11 +1,16 @@
 from django.contrib import admin
 from django.shortcuts import render
+from django.conf import settings
 from django.urls import include, path
 from django.views.generic import TemplateView
 
 
 def staff_home(request):
-    if request.user.is_authenticated and (
+    mfa_verified = (
+        request.user.is_authenticated
+        and str(request.user.pk) == str(request.session.get("mfa_verified_user_id", ""))
+    )
+    if mfa_verified and (
         request.user.is_superuser
         or request.user.groups.filter(name__in=["dispatcher", "admin", "service_provider"]).exists()
     ):
@@ -18,6 +23,10 @@ def staff_home(request):
                 "is_superuser": request.user.is_superuser,
                 "is_provider": not request.user.is_superuser
                 and request.user.groups.filter(name="service_provider").exists(),
+                "is_mfa_recovery_owner": bool(
+                    settings.MFA_RECOVERY_OWNER_EMAIL
+                    and request.user.email.strip().lower() == settings.MFA_RECOVERY_OWNER_EMAIL
+                ),
             },
         )
     return render(request, "staff/login.html")

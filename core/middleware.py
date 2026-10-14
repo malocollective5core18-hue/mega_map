@@ -1,3 +1,6 @@
+from django.http import HttpResponseRedirect, JsonResponse
+
+
 class PrivateStaffNoStoreMiddleware:
     """Prevent browsers and shared proxies from caching staff/API identity pages."""
 
@@ -36,3 +39,36 @@ class ContentSecurityPolicyReportOnlyMiddleware:
         response = self.get_response(request)
         response["Content-Security-Policy-Report-Only"] = self.POLICY
         return response
+
+
+class StaffMFARequiredMiddleware:
+    """Require a completed OTP challenge before serving staff data or Django admin pages."""
+
+    STAFF_PREFIXES = ("/api/admin/", "/admin/")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        is_staff_area = request.path.startswith(self.STAFF_PREFIXES)
+        if request.path == "/admin/login/":
+            return HttpResponseRedirect("/staff/")
+        if (
+            is_staff_area
+            and user is not None
+            and user.is_authenticated
+            and str(user.pk) != str(request.session.get("mfa_verified_user_id", ""))
+        ):
+            if request.path.startswith("/api/"):
+                return JsonResponse(
+                    {
+                        "error": {
+                            "code": "mfa_required",
+                            "message": "Complete staff two-step verification to continue.",
+                        }
+                    },
+                    status=403,
+                )
+            return JsonResponse({"detail": "Staff two-step verification is required."}, status=403)
+        return self.get_response(request)
