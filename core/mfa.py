@@ -27,12 +27,28 @@ def current_staff_device(user, *, confirmed=True):
     return TOTPDevice.objects.filter(user=user, confirmed=confirmed).order_by("pk").first()
 
 
+def is_mfa_exempt(user):
+    """Allow password-only access for the explicitly configured superuser account."""
+    exempt_email = settings.MFA_EXEMPT_SUPERUSER_EMAIL
+    return bool(
+        exempt_email
+        and user
+        and user.is_authenticated
+        and user.is_active
+        and user.is_superuser
+        and user.email.strip().lower() == exempt_email
+    )
+
+
 def is_mfa_verified(request):
     user = getattr(request, "user", None)
     return bool(
         user
         and user.is_authenticated
-        and str(request.session.get("mfa_verified_user_id", "")) == str(user.pk)
+        and (
+            is_mfa_exempt(user)
+            or str(request.session.get("mfa_verified_user_id", "")) == str(user.pk)
+        )
     )
 
 

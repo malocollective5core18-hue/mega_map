@@ -153,6 +153,8 @@ CODE_VERIFY_RATE = os.environ.get("CODE_VERIFY_RATE", "30/hour")
 SUBMISSION_RATE = os.environ.get("SUBMISSION_RATE", "10/hour")
 STAFF_LOGIN_RATE = os.environ.get("STAFF_LOGIN_RATE", "5/min")
 MFA_RECOVERY_OWNER_EMAIL = os.environ.get("MFA_RECOVERY_OWNER_EMAIL", "").strip().lower()
+# Optional password-only exception for one named superuser; MFA remains required for all others.
+MFA_EXEMPT_SUPERUSER_EMAIL = os.environ.get("MFA_EXEMPT_SUPERUSER_EMAIL", "").strip().lower()
 MFA_LOCKOUT_FAILURES = 5
 MFA_LOCKOUT_MINUTES = 15
 MFA_CHALLENGE_SECONDS = 300

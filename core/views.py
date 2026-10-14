@@ -48,6 +48,7 @@ from .mfa import (
     consume_recovery_code,
     current_staff_device,
     establish_verified_session,
+    is_mfa_exempt,
     is_mfa_verified,
     is_staff_user,
     mfa_locked,
@@ -117,16 +118,16 @@ def serialize_public_shop(business):
     }
 
 
-@api_view(["GET"])
+@api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([PublicThrottle])
 def public_shops(request):
     try:
-        bbox = parse_bbox(request.query_params.get("bbox"))
+        bbox = parse_bbox(request.data.get("bbox"))
     except ValueError as exc:
         return error("invalid_bbox", str(exc), status.HTTP_400_BAD_REQUEST)
     try:
-        limit = min(500, max(1, int(request.query_params.get("limit", "500"))))
+        limit = min(500, max(1, int(request.data.get("limit", "500"))))
     except ValueError:
         return error(
             "invalid_limit",
@@ -137,11 +138,11 @@ def public_shops(request):
     return Response({"items": [serialize_public_shop(row) for row in rows]})
 
 
-@api_view(["GET"])
+@api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([PublicThrottle])
 def public_shop_search(request):
-    query = request.query_params.get("q", "").strip()
+    query = str(request.data.get("q", "")).strip()
     if len(query) < 2 or len(query) > 100:
         return error(
             "invalid_query",
@@ -160,12 +161,12 @@ def public_shop_search(request):
     return Response({"items": [serialize_public_shop(row) for row in businesses]})
 
 
-@api_view(["GET"])
+@api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([PublicThrottle])
 def public_demand_cells(request):
     try:
-        bbox = parse_bbox(request.query_params.get("bbox"))
+        bbox = parse_bbox(request.data.get("bbox"))
     except ValueError as exc:
         return error("invalid_bbox", str(exc), status.HTTP_400_BAD_REQUEST)
     west, south, east, north = bbox
@@ -706,6 +707,13 @@ def auth_login(request):
     else:
         role = "dispatcher"
 
+    if is_mfa_exempt(user):
+        login(raw_request, user)
+        raw_request.session["mfa_verified_user_id"] = str(user.pk)
+        raw_request.session.pop("mfa_pending_user_id", None)
+        raw_request.session.pop("mfa_pending_expires_at", None)
+        return Response({"authenticated": True, "role": role})
+
     if current_staff_device(user, confirmed=True):
         logout(raw_request)
         raw_request.session["mfa_pending_user_id"] = user.pk
@@ -1184,7 +1192,7 @@ def serialize_staff_business(business, *, detail=False):
     return result
 
 
-@api_view(["GET"])
+@api_view(["POST"])
 @permission_classes([AuditIsAuthenticated])
 def admin_businesses(request):
     denied = staff_required(request)
@@ -1193,12 +1201,12 @@ def admin_businesses(request):
     businesses = CustomerBusiness.objects.select_related("location", "consent", "assigned_to")
     if has_role(request.user, "field_team") and not request.user.is_superuser:
         businesses = businesses.filter(assigned_to=request.user)
-    status_filter = request.query_params.get("status", "").strip()
+    status_filter = str(request.data.get("status", "")).strip()
     if status_filter:
         if status_filter not in CustomerBusiness.Status.values:
             return error("invalid_status", "Unknown business status.", status.HTTP_400_BAD_REQUEST)
         businesses = businesses.filter(status=status_filter)
-    query = request.query_params.get("q", "").strip()
+    query = str(request.data.get("q", "")).strip()
     if query:
         businesses = businesses.filter(
             Q(public_ref__icontains=query)
@@ -1206,14 +1214,14 @@ def admin_businesses(request):
             | Q(customer_name__icontains=query)
             | Q(phone__icontains=query)
         )
-    bbox_arg = request.query_params.get("bbox")
+    bbox_arg = request.data.get("bbox")
     if bbox_arg:
         try:
             businesses = current_location_filter(businesses, parse_bbox(bbox_arg))
         except ValueError as exc:
             return error("invalid_bbox", str(exc), status.HTTP_400_BAD_REQUEST)
     try:
-        page = max(1, int(request.query_params.get("page", "1")))
+        page = max(1, int(request.data.get("page", "1")))
     except ValueError:
         return error("invalid_page", "Page must be a whole number.", status.HTTP_400_BAD_REQUEST)
     page_size = 50
@@ -1719,7 +1727,7 @@ def admin_export(request):
     return response
 
 
-@api_view(["GET", "POST"])
+@api_view(["POST"])
 @permission_classes([AuditIsAuthenticated])
 def admin_provider_codes(request):
     if (
@@ -1743,7 +1751,8 @@ def admin_provider_codes(request):
         not request.user.is_superuser
         and request.user.groups.filter(name="service_provider").exists()
     )
-    if request.method == "POST" and not service_provider_or_superuser(request.user):
+    is_search = request.data.get("action") == "search"
+    if not is_search and not service_provider_or_superuser(request.user):
         record_audit(
             request=request,
             actor=request.user,
@@ -1757,12 +1766,12 @@ def admin_provider_codes(request):
             "Only the superuser and service providers can generate customer keys.",
             status.HTTP_403_FORBIDDEN,
         )
-    if request.method == "GET":
+    if is_search:
         codes = ProviderCode.objects.all()
         if is_provider:
             codes = codes.filter(created_by=request.user)
-        query = request.query_params.get("q", "").strip()[:120]
-        status_filter = request.query_params.get("status", "").strip()
+        query = str(request.data.get("q", "")).strip()[:120]
+        status_filter = str(request.data.get("status", "")).strip()
         now = timezone.now()
         if status_filter == "active":
             codes = codes.filter(status=ProviderCode.Status.ACTIVE, expires_at__gt=now).filter(
@@ -1816,7 +1825,7 @@ def admin_provider_codes(request):
             codes = codes.filter(search_filter)
 
         try:
-            page = max(1, int(request.query_params.get("page", "1")))
+            page = max(1, int(request.data.get("page", "1")))
         except ValueError:
             return error(
                 "invalid_page", "Page must be a whole number.", status.HTTP_400_BAD_REQUEST

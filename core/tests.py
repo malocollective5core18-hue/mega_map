@@ -63,7 +63,7 @@ class PublicPrivacyTests(TestCase):
         self.client = APIClient()
 
     def test_public_endpoints_filter_and_scrub_sensitive_business_data(self):
-        response = self.client.get("/api/public/shops", {"bbox": "39,-7,40,-6"})
+        response = self.client.post("/api/public/shops", {"bbox": "39,-7,40,-6"}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data["items"]), 1)
         item = response.data["items"][0]
@@ -73,9 +73,57 @@ class PublicPrivacyTests(TestCase):
             self.assertNotIn(private_value, encoded)
 
     def test_public_demand_hides_cells_below_three(self):
-        response = self.client.get("/api/public/demand-cells", {"bbox": "39,-7,40,-6"})
+        response = self.client.post("/api/public/demand-cells", {"bbox": "39,-7,40,-6"}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item["cellId"] for item in response.data["items"]], ["large"])
+
+
+class SensitiveSearchTransportTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.root = get_user_model().objects.create_superuser(
+            username="query-privacy-root",
+            email="query-privacy@example.test",
+            password="safe-test-password",
+        )
+        self.client.force_authenticate(user=self.root)
+
+    def test_sensitive_list_searches_use_post_bodies_without_query_strings(self):
+        cases = (
+            ("/api/public/shops", {"bbox": "39,-7,40,-6", "limit": 500}),
+            ("/api/public/demand-cells", {"bbox": "39,-7,40,-6"}),
+            ("/api/public/shops/search", {"q": "Private Customer Name"}),
+            ("/api/provider-codes/verify", {"phone": "+255712345678", "code": "TEST-KEY"}),
+            ("/api/admin/businesses", {"page": 1, "q": "Private Customer Name"}),
+            (
+                "/api/admin/provider-codes",
+                {"action": "search", "page": 1, "q": "+255712345678"},
+            ),
+        )
+        for path, body in cases:
+            with self.subTest(path=path):
+                response = self.client.post(path, body, format="json")
+                self.assertNotEqual(response.status_code, 405)
+                self.assertEqual(response.wsgi_request.META.get("QUERY_STRING", ""), "")
+
+    def test_sensitive_search_endpoints_reject_get_query_parameters(self):
+        cases = (
+            "/api/public/shops?bbox=39%2C-7%2C40%2C-6",
+            "/api/public/demand-cells?bbox=39%2C-7%2C40%2C-6",
+            "/api/public/shops/search?q=Private%20Customer%20Name",
+            "/api/provider-codes/verify?phone=%2B255712345678&code=TEST-KEY",
+            "/api/admin/businesses?q=Private%20Customer%20Name",
+            "/api/admin/provider-codes?q=%2B255712345678",
+        )
+        for path in cases:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 405)
+
+    @override_settings(SECURE_SSL_REDIRECT=True, SECURE_REDIRECT_EXEMPT=[r"^healthz$"])
+    def test_healthz_is_empty_and_exempt_from_https_redirect(self):
+        response = self.client.get("/healthz")
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b"")
 
 
 class DuplicatePhoneCheckTests(TestCase):
@@ -342,7 +390,7 @@ class AssignedFieldTeamJourneyTests(TestCase):
         return business
 
     def test_field_team_sees_only_assigned_jobs_and_cannot_open_another(self):
-        response = self.client.get("/api/admin/businesses")
+        response = self.client.post("/api/admin/businesses", {}, format="json")
         self.assertEqual(
             [row["reference"] for row in response.data["items"]], ["BU-FIELD-ASSIGNED"]
         )
@@ -760,7 +808,7 @@ class StaffMFATests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data.get("mfaEnrollmentRequired"))
         self.assertFalse(response.data.get("authenticated", False))
-        denied = self.client.get("/api/admin/businesses")
+        denied = self.client.post("/api/admin/businesses", {}, format="json")
         self.assertEqual(denied.status_code, 403)
 
     def test_mfa_enrollment_provides_qr_and_manual_key(self):
@@ -877,7 +925,7 @@ class StaffPermissionTests(TestCase):
         )
 
     def test_anonymous_denied_and_dispatcher_cannot_export(self):
-        self.assertEqual(self.client.get("/api/admin/businesses").status_code, 403)
+        self.assertEqual(self.client.post("/api/admin/businesses", {}, format="json").status_code, 403)
         self.assertTrue(
             AuditLog.objects.filter(
                 action="auth.authorization_denied", object_type="StaffEndpoint"
@@ -890,7 +938,7 @@ class StaffPermissionTests(TestCase):
         )
         user.groups.add(dispatcher_group)
         self.client.force_authenticate(user=user)
-        self.assertEqual(self.client.get("/api/admin/businesses").status_code, 200)
+        self.assertEqual(self.client.post("/api/admin/businesses", {}, format="json").status_code, 200)
         self.assertEqual(self.client.get("/api/admin/export.csv").status_code, 403)
 
     def test_staff_home_has_dispatch_dashboard(self):
@@ -976,7 +1024,7 @@ class StaffPermissionTests(TestCase):
         )
         provider.groups.add(provider_group)
         self.client.force_authenticate(user=provider)
-        response = self.client.get("/api/admin/provider-codes")
+        response = self.client.post("/api/admin/provider-codes", {"action": "search"}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 0)
 
@@ -1078,6 +1126,10 @@ class StaffPermissionTests(TestCase):
             client = APIClient()
             if user is not None:
                 client.force_authenticate(user=user)
+            if method == "get" and path == "/api/admin/businesses":
+                return client.post(path, {}, format="json").status_code
+            if method == "get" and path == "/api/admin/provider-codes":
+                return client.post(path, {"action": "search"}, format="json").status_code
             return getattr(client, method)(path).status_code
 
         anonymous = None
@@ -1151,7 +1203,7 @@ class StaffPermissionTests(TestCase):
             password="safe-test-password",
         )
         self.client.force_authenticate(user=root)
-        response = self.client.get("/api/public/shops", {"bbox": "39,-7,40,-6"})
+        response = self.client.post("/api/public/shops", {"bbox": "39,-7,40,-6"}, format="json")
         self.assertEqual(len(response.data["items"]), 1)
         self.assertEqual(
             self.client.patch(
@@ -1159,7 +1211,7 @@ class StaffPermissionTests(TestCase):
             ).status_code,
             200,
         )
-        response = self.client.get("/api/public/shops", {"bbox": "39,-7,40,-6"})
+        response = self.client.post("/api/public/shops", {"bbox": "39,-7,40,-6"}, format="json")
         self.assertEqual(response.data["items"], [])
 
     def test_login_rejects_ambiguous_case_insensitive_email(self):
@@ -1263,7 +1315,7 @@ class StaffPermissionTests(TestCase):
             username="index-admin", email="index-admin@example.test", password="safe-test-password"
         )
         self.client.force_authenticate(user=admin)
-        response = self.client.get("/api/admin/provider-codes")
+        response = self.client.post("/api/admin/provider-codes", {"action": "search"}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["items"][0]["customerName"], self.business.customer_name)
         self.assertEqual(response.data["items"][0]["phone"], self.business.phone)

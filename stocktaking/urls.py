@@ -1,15 +1,19 @@
 from django.contrib import admin
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.conf import settings
 from django.urls import include, path
 from django.views.generic import TemplateView
 
+from core.mfa import is_mfa_verified
+
+
+def healthz(_request):
+    return HttpResponse(status=204)
+
 
 def staff_home(request):
-    mfa_verified = (
-        request.user.is_authenticated
-        and str(request.user.pk) == str(request.session.get("mfa_verified_user_id", ""))
-    )
+    mfa_verified = is_mfa_verified(request)
     if mfa_verified and (
         request.user.is_superuser
         or request.user.groups.filter(
@@ -37,6 +41,7 @@ def staff_home(request):
 
 
 urlpatterns = [
+    path("healthz", healthz, name="healthz"),
     path("", TemplateView.as_view(template_name="index.html"), name="home"),
     path("staff/", staff_home, name="staff-home"),
     path("admin/", admin.site.urls),

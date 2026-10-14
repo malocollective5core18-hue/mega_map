@@ -18,7 +18,7 @@
 | Customer review | `/`, `index.html:806-832,1364-1371` | Customer | Profile/location summary, privacy and optional public consent, submit/edit/back/cancel. | Not tested |
 | Customer completion | `/`, `index.html:834-845,1410-1422` | Customer | Submission/update/dedup success, reference, done/support. | Not tested |
 | Customer cancellation confirm | `/`, `index.html:847-852` | Customer | Confirms data will be cleared; continue or cancel. | Not tested |
-| Staff sign in / MFA | `/staff/`, `templates/staff/login.html:1-40` | Dispatcher, admin, provider, superuser | Password, MFA challenge, recovery, enrollment QR/manual secret, one-time recovery codes, errors. | Not tested |
+| Staff sign in / MFA | `/staff/`, `templates/staff/login.html:1-40` | Dispatcher, admin, provider, superuser | Staff password, MFA challenge/recovery/enrollment. The named superuser configured by `MFA_EXEMPT_SUPERUSER_EMAIL` skips MFA and signs in with password only. | Not tested |
 | Staff map/inbox | `/staff/`, `templates/staff/dashboard.html:72-93,208-243` | Dispatcher, admin, superuser | Map, list loading/empty/error, search/status filter, pagination, detail drawer. | Not tested |
 | Registered customers | `/staff/`, `templates/staff/dashboard.html` | Dispatcher, admin, superuser | Search/page, coordinates/copy, edit, renew-key affordance subject to role. A staff-directory view was missing from the template at the start of Part B; it has now been restored and its bindings are guarded by role. | Not tested |
 | Customer details/edit | `/staff/`, `templates/staff/dashboard.html:224-239` | Dispatcher, admin, superuser | Profile/status/notes/assignee, public-listing control for admin, map, visit history/add form, navigation, correction. | Not tested |
@@ -47,7 +47,7 @@
 | Issue/revoke customer key | No | No | No | No | Issue/revoke own | No | Issue/revoke |
 | Create staff users | No | No | No | No | No | No | Yes |
 | Re-enrol staff MFA | No | No | No | No | No | No | Only configured MFA recovery-owner superuser |
-| Django `/admin/` | No | No | No | No | No | No | Yes, with MFA |
+| Django `/admin/` | No | No | No | No | No | No | Yes; MFA unless named superuser exemption is configured |
 | One-time arrival distance check | No | No | No | No | No | Assigned only | No |
 
 References: `core/views.py` role and business handlers, `core/middleware.py`, `core/admin.py`, `templates/staff/dashboard.html`, and `core/models.py:CustomerBusiness.assigned_to`. Field teams can see only assigned records; assignment creation is available through dispatcher/admin record editing and should be reviewed for operational usability.

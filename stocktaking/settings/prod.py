@@ -8,6 +8,7 @@ if not os.environ.get("CSRF_TRUSTED_ORIGINS"):  # noqa: F405
     raise RuntimeError("Set CSRF_TRUSTED_ORIGINS for production.")
 
 SECURE_SSL_REDIRECT = True
+SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True

@@ -104,7 +104,7 @@ Admin assistant signs in with MFA and can use customer map, Registered customers
 
 ### Superuser / administrator
 
-Superuser signs in with MFA. In addition to admin assistant functions, gets the admin-only navigation for registering admin assistants and service providers, issuing keys, and viewing audit/export; Django `/admin/` is limited to a Django superuser and MFA-verified session (`templates/staff/dashboard.html:94-106`, `core/views.py:608-623,867-965`, `core/admin.py:6-11`, `core/middleware.py:35-65`).
+Superuser signs in with email/password. If `MFA_EXEMPT_SUPERUSER_EMAIL` is unset or does not exactly match the active superuser's email, staff MFA remains required; if configured to the named superuser's email, that account is password-only. Other staff still require MFA. In addition to admin assistant functions, the superuser gets navigation for registering staff, issuing keys, and viewing audit/export; Django `/admin/` follows the same configured MFA exception (`templates/staff/dashboard.html:94-106`, `core/views.py:608-623,867-965`, `core/admin.py:6-11`, `core/middleware.py`).
 
 **Public listing:** admin PATCH may update consent `publicListing`; public shops endpoint includes only served records whose consent is true. No dedicated staff screen provides a consent-withdrawal explanation or customer notification (`core/views.py:95-116,587-685`).
 

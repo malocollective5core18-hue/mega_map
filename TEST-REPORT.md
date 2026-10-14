@@ -80,3 +80,43 @@ Implementation commit: `439a93e`; journey/privacy documentation commit: `96e26dc
 - Approve bilingual notice and retention/removal terms; name the privacy/support owner.
 - Confirm field-job assignment ownership and whether field team may update outcome/status.
 - Complete Playwright suite/screenshots and browser/device permission tests before asserting compact-fit or runtime success.
+
+## Mission 7 stabilization — 15 October 2026
+
+No Render dashboard, GitHub Actions account, production database, customer data, or live mutation was accessed. Network/DNS checks in this run failed for GitHub and PyPI; local PostgreSQL had no response and Docker was unavailable.
+
+### Environment and CI evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Render deployment branch/commit | Not tested | No dashboard/deploy-log access. The blueprint currently targets `production`; live service provenance remains unknown, so we cannot say whether unreviewed code is live. |
+| Dependency installer alignment | Pass (source) | `build.sh` installs `requirements.lock`; `.github/workflows/ci.yml` installs the same file. It pins Django 5.2.18 and djangorestframework 3.17.2. |
+| Exact pinned versions in latest test run | Not tested | Local venv reports Django 5.2.18 and DRF 3.16.1, while lacking django-otp; system Python lacks Django. The current lock could not be installed because PyPI DNS fails. Previous test evidence does not establish a run against the complete current lock. |
+| GitHub Actions for `fix/audit-defects` and `feature/user-journeys` | Not tested | No GitHub connector or `gh` CLI; DNS resolution for github.com fails and public Actions fetch is unavailable. Job statuses and root causes are unknown. The committed workflow's Playwright guard will fail while `playwright.config.ts`/`package-lock.json` are absent; required-check settings were not changed. |
+| PostgreSQL migrations/full suite/concurrency 20x | Not tested | `pg_isready` reports no server and Docker is absent; no Actions evidence is reachable. |
+| pip-audit | Not tested in this run | Tool is unavailable locally; current CI result cannot be inspected. Earlier Mission 5 pass is historical only. |
+| Ruff | Not tested in this run | Tool is unavailable locally; current CI result cannot be inspected. Earlier Mission 5 pass is historical only. |
+| Full-history Gitleaks | Not tested in this run | Tool/result unavailable; no current clean-history claim is made. |
+| Frontend JavaScript syntax | Pass | `python3 scripts/check_frontend_js.py` checked five inline script blocks after the Mission 7 request changes. |
+| Django checks and tests | Not tested | System Python has no Django. Available `.venv` is stale/incomplete and cannot run the current locked project (django-otp missing). |
+
+### Stabilization changes and checks
+
+| Item | Status | Evidence |
+|---|---|---|
+| SVG favicon | Implemented in source | Linked from public, staff login, and staff dashboard templates; served from app static files. Static collection/live serving not tested. |
+| `/healthz` | Implemented in source; runtime Not tested | Returns HTTP 204 with no body; production `SECURE_REDIRECT_EXEMPT` excludes this path from HTTPS redirect. Test authored; unable to run Django suite. |
+| Render health-check path | Pass (blueprint source) | `render.yaml` now specifies `/healthz`; actual Render dashboard setting not verified. |
+| Query-string exposure from app API | Implemented in source; tests Not tested | Public bbox/shop searches, staff customer filters, provider-code history filters, phone/key verification, and location coordinates use JSON/body requests. New tests reject query-based GET forms and assert POST query strings are empty. |
+| Public place suggestions | Limitation documented | Browser still sends place-search text directly to Photon using its query parameter API. It does not put that value in a Render request URL, but it does leave the browser in an external request URL; do not claim global URL/query-free search or that Photon never receives search text. |
+| External map navigation | Intentional external transfer | Clicking Drive/Walk/map links sends destination coordinates to the selected map provider. They are not included in an incoming Render API URL. |
+| One-time superuser bootstrap variables | Pass (source review) | No code/build references found. If present in Render, owner may remove `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL`, and `DJANGO_SUPERUSER_PASSWORD`. Values were not read or printed. |
+| Pending owner decisions | Open | Service boundary, 50 m warning, manual-pin acceptance, large-offset policy, field-team rights/job-state authority were left unchanged. |
+
+### Live smoke test (test data only)
+
+All steps are **Not tested**: public map; issue test key; customer location flow; duplicate-phone rejection; staff customer view; navigate and copy coordinates; revoke key; logout; MFA login. No test credentials/key were supplied, Render is unreachable from this environment, and no live operation was attempted.
+
+### Release / merge status
+
+Not release-ready. The deployed Render commit and branch, latest CI status, live smoke test, PostgreSQL verification, enforced CSP, Supabase backup/restore, approved legal notice, and real-device GPS tests remain unverified or open. No PR was prepared because green CI has not been confirmed. No merge, tag, deploy, production commit, or repository-setting change was made.

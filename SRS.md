@@ -165,7 +165,7 @@ Priorities: **M** = must-have for the next usable release; **S** = should-have; 
 | STF-10 | M | Staff exact-data views, updates, pin corrections, exports, code issuance, and audit access shall be permission-checked and auditable. | Partially current; review audit coverage and role policy |
 | STF-11 | M | Admin shall be able to search/filter/page issued code records by available customer identity, phone, label, and status. The one-time code secret shall never be returned by history. | Current list; legacy records may only expose last four phone digits until matched to a submitted record |
 | STF-12 | S | Admin shall be able to revoke an issued code from the UI and inspect use history. | API has revoke support; UI/history detail needs completion |
-| STF-13 | S | Staff authentication shall support enforced MFA and safe account recovery. | Not implemented |
+| STF-13 | S | Staff authentication shall support enforced MFA and safe account recovery. | Implemented; named superuser exception is configurable |
 | STF-14 | S | Admin shall have reports for submission volume, service area, dispatch time, and location quality without exposing unnecessary contact data. | Not implemented |
 | STF-15 | M | Superuser shall create field-team accounts; dispatch staff shall assign jobs; field team shall see only assigned jobs, run a one-time arrival-distance check, and correct an assigned pin. The staff member's raw coordinate shall not be persisted. | Implemented in source; API/browser tests outstanding |
 
@@ -191,7 +191,7 @@ Priorities: **M** = must-have for the next usable release; **S** = should-have; 
 - Staff permissions shall be enforced in the backend, not only by hiding menu items.
 - All dynamic text rendered into HTML shall be escaped or inserted as text.
 - Secrets and database credentials shall be provided through private deployment settings, never committed to GitHub or placed in frontend code.
-- Sensitive records shall use least-privilege access and audit trails. MFA is a release requirement for routine live operations.
+- Sensitive records shall use least-privilege access and audit trails. MFA is required for staff, except an owner-approved superuser explicitly named by `MFA_EXEMPT_SUPERUSER_EMAIL`; that password-only exception increases account risk and must remain limited to the owner's active account.
 
 ### Privacy and data integrity
 

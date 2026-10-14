@@ -23,27 +23,27 @@ Supabase's connection methods and IP support are documented in its [Postgres con
 4. Confirm `DJANGO_ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` match the exact Render hostname shown on the service. If using a custom domain, add its hostname and `https://` origin as comma-separated values.
 5. Deploy. The build applies Django migrations and initializes roles/cache; the start command runs one Gunicorn worker with four threads, suitable for the free instance's small memory limit.
 
-Render runs `build.sh` on each build and uses the service command in the Blueprint. The free service has no persistent disk or dashboard shell. Its temporary filesystem is only used for build output and collected static files; the database is external.
+Render runs `build.sh` on each build and uses the service command in the Blueprint. The free service has no persistent disk or dashboard shell. Its temporary filesystem is only used for build output and collected static files; the database is external. The Blueprint health check uses `/healthz`, which returns an empty HTTP 204 response without reading customer or database data; production settings exempt this path from the HTTPS redirect for liveness checks.
 
 ## 3. Create the first administrator
 
-Do not add credentials to the repository or blueprint. Do not put a superuser password in permanent Render environment variables, and do not upload `.env`; Render does not read your local `.env` file. Create the superuser once against the production database from a trusted computer. Make a private environment file outside the repository containing the Render `DJANGO_SECRET_KEY`, exact host/origin values, and the Supabase session-pooler `DATABASE_URL`. Keep it private and delete it when finished. Install the project requirements locally and run:
+Do not add credentials to the repository or blueprint. Do not put a superuser password in permanent Render environment variables, and do not upload `.env`; Render does not read your local `.env` file. Create the superuser once against the production database from a trusted computer. Make a private environment file outside the repository containing the Render `DJANGO_SECRET_KEY`, exact host/origin values, and the Supabase session-pooler `DATABASE_URL`. Keep it private and delete it when finished. Install the exact deployment lock locally and run:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements.lock
 set -a
 . /secure/path/mauzosheet-production.env
 set +a
 DJANGO_SETTINGS_MODULE=stocktaking.settings.prod .venv/bin/python manage.py createsuperuser
 ```
 
-The build creates `admin`, `dispatcher`, and `service_provider` role groups. Sign in at `/staff/` with this superuser account. Use its sidebar to register admin assistants and service providers. Admin assistants cannot create staff or issue customer keys; service providers can issue reusable phone-bound customer keys. Do not share the superuser account. Rotate any password that has been pasted into chat or exposed elsewhere before creating the production account.
+The build creates `admin`, `dispatcher`, and `service_provider` role groups. Sign in at `/staff/` with this superuser account. Use its sidebar to register admin assistants and service providers. Admin assistants cannot create staff or issue customer keys; service providers can issue reusable phone-bound customer keys. Do not share the superuser account. Rotate any password that has been pasted into chat or exposed elsewhere before creating the production account. The application does not read `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL`, or `DJANGO_SUPERUSER_PASSWORD`; remove these one-time bootstrap variables from Render after creating the account if they were added there.
 
 ## 4. Before serving live customers
 
 - Move off Render and Supabase free tiers for live operations; configure Supabase automated backups and perform a restore drill.
-- Staff MFA is a release blocker: current sign-in does not enforce TOTP or recovery codes. Do not use this deployment for routine real customer records until an approved, maintained MFA flow is implemented and tested.
+- Staff sign-in enforces TOTP or a recovery code for staff accounts. If the owner explicitly wants password-only access for the superuser, set `MFA_EXEMPT_SUPERUSER_EMAIL` in Render to that active superuser's exact email. This exception applies only to a superuser with that email; leave it blank to require MFA for every staff account. Password-only administrator access weakens account protection and should be limited to the named owner account.
 - Set `COMPANY_PHONE_NUMBER` and `COMPANY_WHATSAPP_NUMBER` in Render if those actions should work.
 - Review the privacy notice and data handling for Tanzania, including hosting customer names, phone numbers, and exact locations in Singapore. Confirm legal and owner approval before collecting real customer records.
 - Confirm map tile/geocoding service terms, retention/deletion procedures, monitoring and incident response. Logs should not include customer details.

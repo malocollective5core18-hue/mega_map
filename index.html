@@ -1,10 +1,12 @@
 <!DOCTYPE html>
+{% load static %}
 <html lang="sw">
 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Share Office Location – Stocktaking Services</title>
+  <link rel="icon" type="image/svg+xml" href="{% static 'core/favicon.svg' %}">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <style>
     :root {
@@ -992,7 +994,7 @@
     async function loadShops(bbox) {
       const request = ++shopsRequest;
       try {
-        const r = await fetchT(api("/api/public/shops?bbox=" + encodeURIComponent(bbox) + "&limit=500"));
+        const r = await fetchT(api("/api/public/shops"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bbox, limit: 500 }) });
         if (!r.ok) throw new Error("shops");
         const data = await r.json(); if (request !== shopsRequest) return;
         shopsLayer.clearLayers();
@@ -1011,7 +1013,7 @@
     async function loadDemand(bbox) {
       const request = ++demandRequest;
       try {
-        const r = await fetchT(api("/api/public/demand-cells?bbox=" + encodeURIComponent(bbox)));
+        const r = await fetchT(api("/api/public/demand-cells"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bbox }) });
         if (!r.ok) throw new Error("demand");
         const data = await r.json(); if (request !== demandRequest) return;
         demandLayer.clearLayers();
@@ -1600,7 +1602,7 @@
       hideHomeResults();
       searchLayer.clearLayers();
       try {
-        const own = await fetchT(api("/api/public/shops/search?q=" + encodeURIComponent(q)));
+        const own = await fetchT(api("/api/public/shops/search"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q }) });
         if (own.ok) {
           const results = publicItems(await own.json());
           if (results.length) {

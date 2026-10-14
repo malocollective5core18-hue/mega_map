@@ -1,5 +1,7 @@
 from django.http import HttpResponseRedirect, JsonResponse
 
+from .mfa import is_mfa_verified
+
 
 class PrivateStaffNoStoreMiddleware:
     """Prevent browsers and shared proxies from caching staff/API identity pages."""
@@ -58,7 +60,7 @@ class StaffMFARequiredMiddleware:
             is_staff_area
             and user is not None
             and user.is_authenticated
-            and str(user.pk) != str(request.session.get("mfa_verified_user_id", ""))
+            and not is_mfa_verified(request)
         ):
             if request.path.startswith("/api/"):
                 return JsonResponse(
