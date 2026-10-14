@@ -217,7 +217,7 @@
     if(typeof L!=='undefined'){
       map=L.map('map').setView([-6.8,39.25],11);
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles © Esri',maxZoom:19}).addTo(map);
-      markers=L.layerGroup().addTo(map);
+      markers=L.featureGroup().addTo(map);
     }else{
       const mapNotice=document.createElement('p');
       mapNotice.className='empty-state';
