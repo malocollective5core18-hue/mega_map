@@ -52,6 +52,8 @@ Not release-ready. Do not treat the skipped PostgreSQL test as a pass. MFA, a co
 
 Date: 15 October 2026. Branch: `feature/user-journeys`, based on `fix/audit-defects`. No live services or customer data were accessed.
 
+Implementation commit: `439a93e`; journey/privacy documentation commit: `96e26dc`. The feature branch push succeeded. No production branch or deployment was changed.
+
 | Work/check | Status | Evidence / blocker |
 |---|---|---|
 | Journey and screen-spec documentation for all eight user types | Pass (source review) | `docs/USER-JOURNEYS.md`, `docs/UI-SCREEN-SPEC.md`, and `RELEASE/JOURNEY-REPORT.md` contain source-referenced journeys, screen states, errors, role permissions, decisions and manual checks. Browser claims remain Not tested. |

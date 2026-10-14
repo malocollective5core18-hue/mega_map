@@ -1,6 +1,6 @@
 # Release Readiness
 
-**Status: NOT PRODUCTION-READY.** Mission 5 is on `fix/audit-defects`; Mission 6 work is in progress on `feature/user-journeys` based on the verified development tip. No production system was accessed or deployed. Mission 6 changes have not yet been committed or pushed.
+**Status: NOT PRODUCTION-READY.** Mission 5 is on `fix/audit-defects`; Mission 6 implementation and documentation are committed on `feature/user-journeys` and pushed to `origin`. Django/PostgreSQL/browser verification remains incomplete. No production system was accessed or deployed.
 
 ## Current gate status
 

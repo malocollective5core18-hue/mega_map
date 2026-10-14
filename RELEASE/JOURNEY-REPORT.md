@@ -3,6 +3,7 @@
 **Date:** 14 October 2026
 **Implementation/check update:** 15 October 2026
 **Branch:** `feature/user-journeys` (created from `fix/audit-defects` at `d26535e`)
+**Published commits:** `439a93e` (implementation), `96e26dc` (journey/privacy docs); branch push succeeded.
 **Scope:** Source review and implementation plan for Mission 6. No live systems or production/customer data were accessed.
 
 ## Journey status
