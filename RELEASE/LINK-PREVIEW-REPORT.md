@@ -1,7 +1,8 @@
 # Link preview release report
 
-**Date:** 15 October 2026  
-**Branch:** `feature/link-preview` (created from `fix/mission7-stabilization` at `dd81786`)  
+**Date:** 15 October 2026
+
+**Branch:** `feature/link-preview` (created from `fix/mission7-stabilization` at `dd81786`)
 **Scope:** Public-page share metadata, static preview/favicon assets, crawler endpoints, and local validation. No merge, deployment, Render dashboard change, production database access, or secret access was performed.
 
 ## Mission task status
