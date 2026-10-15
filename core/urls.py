@@ -36,6 +36,11 @@ urlpatterns = [
         name="admin-business-detail",
     ),
     path(
+        "admin/businesses/<uuid:business_id>/flag-cases",
+        views.admin_business_flag_cases,
+        name="admin-business-flag-cases",
+    ),
+    path(
         "admin/businesses/<uuid:business_id>/visits",
         views.admin_business_visits,
         name="admin-business-visits",

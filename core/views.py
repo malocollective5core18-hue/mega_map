@@ -35,6 +35,7 @@ from .models import (
     AuditLog,
     BusinessLocation,
     CustomerBusiness,
+    CustomerFlagCase,
     DemandCell,
     IdempotencyRecord,
     ProviderCode,
@@ -1291,12 +1292,16 @@ def admin_assignable_staff(request):
     )
 
 
-@api_view(["GET", "PATCH"])
+@api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([AuditIsAuthenticated])
 def admin_business_detail(request, business_id):
     denied = staff_required(request)
     if denied:
         return denied
+    if request.method == "DELETE":
+        denied = staff_required(request, admin=True)
+        if denied:
+            return denied
     business = (
         CustomerBusiness.objects.select_related("location", "consent", "assigned_to")
         .filter(pk=business_id)
@@ -1317,6 +1322,67 @@ def admin_business_detail(request, business_id):
             object_id=business.pk,
         )
         return Response(serialize_staff_business(business, detail=True))
+    if request.method == "DELETE":
+        with transaction.atomic():
+            business = (
+                CustomerBusiness.objects.select_for_update()
+                .select_related("location")
+                .filter(pk=business_id)
+                .first()
+            )
+            if business is None:
+                return error("not_found", "Business not found.", status.HTTP_404_NOT_FOUND)
+            acquire_submission_locks(
+                phone=business.phone,
+                latitude=business.location.latitude,
+                longitude=business.location.longitude,
+            )
+            if CustomerBusiness.objects.filter(phone=business.phone).exclude(pk=business.pk).exists():
+                return error(
+                    "duplicate_phone",
+                    "Resolve other customer records using this phone before deletion; their keys cannot be safely separated.",
+                    status.HTTP_409_CONFLICT,
+                )
+            phone_hash = hash_value("provider-phone:" + business.phone)
+            code_ids = list(
+                ProviderCode.objects.select_for_update()
+                .filter(target_phone_hash=phone_hash)
+                .values_list("pk", flat=True)
+            )
+            now = timezone.now()
+            live_key_query = ProviderCode.objects.filter(
+                pk__in=code_ids,
+                status=ProviderCode.Status.ACTIVE,
+                expires_at__gt=now,
+            ).filter(Q(reusable=True) | Q(use_count__lt=F("max_uses")))
+            revoked_key_count = live_key_query.count()
+            VerificationSession.objects.filter(
+                provider_code_id__in=code_ids, used_at__isnull=True
+            ).update(used_at=now)
+            ProviderCode.objects.filter(
+                pk__in=code_ids, status=ProviderCode.Status.ACTIVE
+            ).update(
+                status=ProviderCode.Status.REVOKED,
+                revoked_at=now,
+            )
+            ProviderCode.objects.filter(pk__in=code_ids).update(
+                target_phone_hash="",
+                target_phone_last4="",
+            )
+            IdempotencyRecord.objects.filter(business=business).delete()
+            record_audit(
+                request=request,
+                actor=request.user,
+                action="customer.deleted",
+                object_type="CustomerBusiness",
+                object_id=business.pk,
+                metadata={
+                    "reference": business.public_ref,
+                    "revoked_key_count": revoked_key_count,
+                },
+            )
+            business.delete()
+        return Response({"deleted": True, "revokedKeys": revoked_key_count})
     data = request.data
     allowed = {
         "customerName",
@@ -1565,6 +1631,89 @@ def admin_business_detail(request, business_id):
         )
     business.refresh_from_db()
     return Response(serialize_staff_business(business, detail=True))
+
+
+@api_view(["GET", "POST"])
+@permission_classes([AuditIsAuthenticated])
+def admin_business_flag_cases(request, business_id):
+    denied = staff_required(request)
+    if denied:
+        return denied
+    if not (has_role(request.user, "dispatcher") or has_role(request.user, "admin")):
+        record_audit(
+            request=request,
+            actor=request.user,
+            action="auth.authorization_denied",
+            object_type="StaffEndpoint",
+            object_id=request.path,
+            metadata={"reason": "customer_flag_role_required"},
+        )
+        return error("not_allowed", "Only dispatchers and administrators can flag customers.", 403)
+    business = CustomerBusiness.objects.filter(pk=business_id).first()
+    if business is None:
+        return error("not_found", "Business not found.", status.HTTP_404_NOT_FOUND)
+    cases = CustomerFlagCase.objects.filter(business=business).select_related("created_by")
+    if request.method == "GET":
+        record_audit(
+            request=request,
+            actor=request.user,
+            action="customer.flag_cases_viewed",
+            object_type="CustomerBusiness",
+            object_id=business.pk,
+        )
+        return Response(
+            {
+                "items": [
+                    {
+                        "id": case.pk,
+                        "reference": case.business_reference,
+                        "category": case.category,
+                        "categoryLabel": case.get_category_display(),
+                        "details": case.details,
+                        "status": case.status,
+                        "createdBy": case.created_by.get_username() if case.created_by else "Staff",
+                        "createdAt": case.created_at,
+                    }
+                    for case in cases
+                ]
+            }
+        )
+    data = request.data
+    category = data.get("category") if isinstance(data, dict) else None
+    details = data.get("details") if isinstance(data, dict) else None
+    if category not in CustomerFlagCase.Category.values:
+        return error("invalid_flag_category", "Choose a valid flag category.", 400)
+    if not isinstance(details, str) or not 10 <= len(details.strip()) <= 1200:
+        return error("invalid_flag_details", "Add a short note of 10–1,200 characters.", 400)
+    with transaction.atomic():
+        business = CustomerBusiness.objects.select_for_update().filter(pk=business_id).first()
+        if business is None:
+            return error("not_found", "Business not found.", status.HTTP_404_NOT_FOUND)
+        case = CustomerFlagCase.objects.create(
+            business=business,
+            business_reference=business.public_ref,
+            category=category,
+            details=details.strip(),
+            created_by=request.user,
+        )
+        record_audit(
+            request=request,
+            actor=request.user,
+            action="customer.flag_case_opened",
+            object_type="CustomerFlagCase",
+            object_id=case.pk,
+            metadata={"category": case.category, "reference": case.business_reference},
+        )
+    return Response(
+        {
+            "id": case.pk,
+            "category": case.category,
+            "categoryLabel": case.get_category_display(),
+            "status": case.status,
+            "createdAt": case.created_at,
+        },
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["POST"])

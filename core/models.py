@@ -223,6 +223,39 @@ class ServiceVisit(models.Model):
         ordering = ["-visit_date", "-created_at"]
 
 
+class CustomerFlagCase(models.Model):
+    class Category(models.TextChoices):
+        DUPLICATE = "duplicate", "Possible duplicate"
+        SAFETY = "safety", "Safety concern"
+        SUSPECTED_FRAUD = "suspected_fraud", "Suspected fraud"
+        DATA_CORRECTION = "data_correction", "Data correction needed"
+        OTHER = "other", "Other concern"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        REVIEWED = "reviewed", "Reviewed"
+        RESOLVED = "resolved", "Resolved"
+
+    business = models.ForeignKey(
+        CustomerBusiness,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="flag_cases",
+    )
+    business_reference = models.CharField(max_length=20)
+    category = models.CharField(max_length=24, choices=Category.choices)
+    details = models.TextField(max_length=1200)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.OPEN)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class DemandCell(models.Model):
     cell_id = models.CharField(max_length=80, unique=True)
     geojson = models.JSONField()

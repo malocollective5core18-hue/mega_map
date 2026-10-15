@@ -10,6 +10,7 @@
 - DRF was upgraded to 3.17.2 after pip-audit identified advisories in 3.16.1. Ruff findings were corrected and action references updated for current Node 24 runners.
 - Issued customer-key history now has a confirmed Revoke action.
 - Public link previews now include absolute canonical/Open Graph/Twitter metadata, a versioned 1200×630 share image generated from tracked favicon assets, and crawler-only robots/sitemap controls. Staff, admin and API responses are marked noindex. Render must set `SITE_URL` to its exact HTTPS origin; WhatsApp/social cache refresh remains platform-controlled.
+- Staff screens now show the UNI-COT collaboration mark. Dispatchers/admins can open stored customer flag cases; admin assistants/superusers can permanently delete a customer with confirmation, linked-key revocation, phone-ambiguity protection, and an audit record.
 
 Changes are recorded here for release and deployment reviews.
 
