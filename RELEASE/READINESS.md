@@ -1,5 +1,22 @@
 # Release Readiness
 
+## Mission 8 link preview update — 15 October 2026
+
+**Status: NOT PRODUCTION-READY.** Link preview metadata and static crawler assets are implemented on `feature/link-preview`. No merge or deployment was performed. The Render host could not resolve from this environment; live crawler and phone-preview behavior is unverified.
+
+| Gate | Status | Evidence / blocker |
+|---|---|---|
+| Public preview metadata and image | Pass (source and local tests) | Canonical/Open Graph/Twitter tags render in raw home HTML; generated 1200×630 PNG is 36,560 bytes and WhiteNoise post-processes it. |
+| Staff/API/admin search exclusion | Pass (source and local tests) | Staff templates carry robots `noindex,nofollow`; `/staff/`, `/api/`, `/admin/` responses carry `X-Robots-Tag`; robots and sitemap list/disallow expected paths. |
+| `SITE_URL` production validation | Pass (source and check) | Production requires HTTPS origin without path/query/fragment; `check --deploy` passed using dummy values. Blueprint uses `https://mega-map.onrender.com`; owner must verify exact Render hostname before applying. |
+| Home crawler availability | Not tested live | Django test-client agents receive 200 without cookies; live `curl -I` could not resolve the Render host. |
+| Home response time | Not tested live | In-process local test-client median was 6.45 ms; Render/network/cold-start time is unknown. Free-tier sleeping remains a preview reliability risk. |
+| Optional share button | Skipped | Public map already uses a compact, screen-filling mobile layout; adding a separate button would add visual clutter. The metadata-only share preview remains available when sharing the root URL. |
+| Full suite | Fail | 70 tests: 2 unrelated assertion failures, 1 PostgreSQL concurrency skip. See `TEST-REPORT.md`; failures were not changed in this scoped branch. |
+| WhatsApp/social phone verification | Not tested | Needs owner manual checklist in `LINK-PREVIEW-REPORT.md`; WhatsApp cache cannot be forced by the application. |
+
+See [LINK-PREVIEW-REPORT.md](LINK-PREVIEW-REPORT.md) and [../TEST-REPORT.md](../TEST-REPORT.md) for complete evidence. Earlier Mission 5/6/7 release gates remain open.
+
 **Status: NOT PRODUCTION-READY.** Mission 5 is on `fix/audit-defects`; Mission 6 implementation and documentation are committed on `feature/user-journeys` and pushed to `origin`. Django/PostgreSQL/browser verification remains incomplete. No production system was accessed or deployed.
 
 ## Mission 7 stabilization update — 15 October 2026

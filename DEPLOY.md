@@ -6,6 +6,8 @@ This repository is prepared for a Render Python web service with Supabase Postgr
 
 Treat the free configuration as a demo or tightly controlled pilot. Render sleeps free web services after 15 minutes without inbound traffic, and the first request after sleep can wait about a minute. Its filesystem is temporary, so all persistent state must stay in Supabase. Supabase may pause a free project after a week with too little database activity; its free database also has a 500 MB quota and no automatic backups. This app holds names, phone numbers, and precise business locations, so do not use the free configuration for routine live customer operations. Upgrade the web service and database, enable managed backups, and validate recovery before handling production customer records. See [Render free instance limits](https://render.com/docs/free), [Supabase free project pausing](https://supabase.com/docs/guides/platform/free-project-pausing), and [Supabase backups](https://supabase.com/docs/guides/platform/backups).
 
+The same sleep can delay a social crawler's first request enough that it misses the link preview. For reliable sharing, use an always-on paid web instance or an uptime check that keeps the service awake. An uptime check does not guarantee that a platform refreshes a cached preview.
+
 ## 1. Create the Supabase database
 
 1. Create a Supabase project in Singapore (`ap-southeast-1`) to keep it close to the Render service region.
@@ -20,10 +22,15 @@ Supabase's connection methods and IP support are documented in its [Postgres con
 1. The Blueprint targets the GitHub `production` branch. In the Render dashboard, confirm that the live service is configured to watch `production`; the repository cannot verify that live setting.
 2. In Render, create or update the **Blueprint** from `malocollective5core18-hue/mega_map` and apply `render.yaml`. Select Singapore if Render asks for a region.
 3. In the new web service's environment settings, set `DATABASE_URL` to the Supabase **Session pooler** URI. Render marks this value `sync: false`, so it is entered privately in the Render dashboard.
-4. Confirm `DJANGO_ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` match the exact Render hostname shown on the service. If using a custom domain, add its hostname and `https://` origin as comma-separated values.
-5. Deploy. The build applies Django migrations and initializes roles/cache; the start command runs one Gunicorn worker with four threads, suitable for the free instance's small memory limit.
+4. Set `SITE_URL` to the exact public HTTPS origin, for example `https://mega-map.onrender.com`, with no trailing slash or path. The production app refuses to start with a missing or non-HTTPS value; canonical, sitemap, and social preview URLs are based on this setting.
+5. Confirm `DJANGO_ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` match the exact Render hostname shown on the service. If using a custom domain, add its hostname and `https://` origin as comma-separated values.
+6. Deploy. The build applies Django migrations and initializes roles/cache; the start command runs one Gunicorn worker with four threads, suitable for the free instance's small memory limit.
 
 Render runs `build.sh` on each build and uses the service command in the Blueprint. The free service has no persistent disk or dashboard shell. Its temporary filesystem is only used for build output and collected static files; the database is external. The Blueprint health check uses `/healthz`, which returns an empty HTTP 204 response without reading customer or database data; production settings exempt this path from the HTTPS redirect for liveness checks.
+
+The crawler endpoints are public `/robots.txt` and `/sitemap.xml`; the sitemap lists only `/`. `/staff/`, `/api/`, and `/admin/` responses carry `X-Robots-Tag: noindex, nofollow`. Public link metadata and its static image are rendered in the initial HTML response. Social services cache previews independently: re-scrape with their debugger or use a new image version when metadata changes. The application cannot force WhatsApp or another platform to refresh old chats.
+
+The public Open Graph image is generated from `core/static/core/icons/icon-512.png`. To edit and regenerate it, install the development-only dependency (`python -m pip install -r requirements-image.txt`) and run `python scripts/make_og_image.py`. Pillow is not part of the web service runtime lock.
 
 ## 3. Create the first administrator
 

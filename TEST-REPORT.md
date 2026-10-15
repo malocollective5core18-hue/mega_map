@@ -120,3 +120,25 @@ All steps are **Not tested**: public map; issue test key; customer location flow
 ### Release / merge status
 
 Not release-ready. The deployed Render commit and branch, latest CI status, live smoke test, PostgreSQL verification, enforced CSP, Supabase backup/restore, approved legal notice, and real-device GPS tests remain unverified or open. No PR was prepared because green CI has not been confirmed. No merge, tag, deploy, production commit, or repository-setting change was made.
+
+## Mission 8 link preview — 15 October 2026
+
+Branch: `feature/link-preview`, created from local `fix/mission7-stabilization` at `dd81786`. No production branch, live database or Render deployment was changed. Dependencies were installed into `/tmp/link-preview-venv` from `requirements.lock`; observed Django 5.2.18 and DRF 3.17.2. The ignored local `.env` was not read.
+
+| Check | Status | Evidence |
+|---|---|---|
+| Locked dependency install and `pip check` | Pass | Fresh isolated environment installed `requirements.lock`; `pip check` reported no broken requirements. |
+| Django `check` | Pass | `stocktaking.settings.test`; no issues. |
+| Production `check --deploy` | Pass | Dummy-only `SITE_URL`, allowed host, CSRF origin and long secret; no real configuration values. |
+| `makemigrations --check --dry-run` | Pass | No changes detected. |
+| Link preview metadata/static tests | Pass | `core.tests.LinkPreviewMetadataTests` and `LinkPreviewImageTests`: 5 tests pass; checks raw HTML tag order/placement, absolute metadata, anonymous crawler GET/HEAD, noindex/private pages, robots/sitemap, and the WhiteNoise image dimensions/type/size. |
+| Production static collection and template rendering | Pass | `collectstatic` using production settings post-processed 424 assets; secure Django test-client request returned 200 and rendered the hashed share-image URL. |
+| Full existing Django suite | Fail | 70 tests: 2 assertion failures, 1 PostgreSQL-only concurrency test skipped. Failures are existing unrelated assertions in `AccuracyLanguageTests.test_customer_copy_does_not_promise_guaranteed_gps_accuracy` (it reads template source and expects a phrase not present) and `LocationSignalValidationTests.test_confidence_uses_accuracy_age_offset_and_staff_verification` (expects the word “offset” in customer copy). No PostgreSQL-backed run was available. |
+| Frontend syntax and whitespace | Pass | `python3 scripts/check_frontend_js.py` and `git diff --check`. |
+| Share-image regeneration | Pass | `python3 scripts/make_og_image.py` reproduced identical SHA-256 `663261f9fcaf5ceb3f02208f79825a1096f21c0657a09ce60889c656a94982b5`; PNG is 1200×630 and 36,560 bytes. Generator-only Pillow dependency is pinned in `requirements-image.txt`. |
+| Local response-time sample | Pass (local only) | Django in-process test client, production settings, 30 requests: median 6.45 ms, mean 32.87 ms, max 803.67 ms. This excludes hosting, network and cold-start latency and is not a Render performance result. |
+| Render `curl -I` and live crawler agents | Not tested | DNS lookup failed with `Could not resolve host: mega-map.onrender.com`; no live HTTP response or response time is claimed. |
+| Browser preview / WhatsApp / social cache refresh | Not tested | No Playwright/browser or physical phone test. Platforms control preview scraping and caching; this code cannot force refresh. |
+| PostgreSQL / GitHub Actions | Not tested | No local PostgreSQL service or accessible GitHub Actions run evidence. |
+
+See [LINK-PREVIEW-REPORT.md](RELEASE/LINK-PREVIEW-REPORT.md) for task-by-task status, owner checklist, and commit references. The overall release remains **NOT PRODUCTION-READY**.

@@ -9,6 +9,7 @@
 - Django `/admin/` is restricted to superusers; a report-only CSP header is available for compatibility observation. Staff TOTP MFA now uses django-otp, with hashed single-use recovery codes, throttling/lockout, verified-session gating, audit events, and recovery-owner-controlled re-enrollment. PostgreSQL/browser evidence and the named recovery owner remain release gates.
 - DRF was upgraded to 3.17.2 after pip-audit identified advisories in 3.16.1. Ruff findings were corrected and action references updated for current Node 24 runners.
 - Issued customer-key history now has a confirmed Revoke action.
+- Public link previews now include absolute canonical/Open Graph/Twitter metadata, a versioned 1200×630 share image generated from tracked favicon assets, and crawler-only robots/sitemap controls. Staff, admin and API responses are marked noindex. Render must set `SITE_URL` to its exact HTTPS origin; WhatsApp/social cache refresh remains platform-controlled.
 
 Changes are recorded here for release and deployment reviews.
 
