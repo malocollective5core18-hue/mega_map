@@ -190,7 +190,7 @@ def public_demand_cells(request):
 def public_config(request):
     return Response(
         {
-            "whatsappNumber": getattr(settings, "COMPANY_WHATSAPP_NUMBER", ""),
+            "whatsappUrl": getattr(settings, "COMPANY_WHATSAPP_URL", ""),
             "phoneNumber": getattr(settings, "COMPANY_PHONE_NUMBER", ""),
             "privacyNoticeVersion": settings.PRIVACY_NOTICE_VERSION,
             "locationWarningAccuracyM": settings.LOCATION_WARN_ACCURACY_M,

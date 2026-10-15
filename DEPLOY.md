@@ -51,7 +51,7 @@ The build creates `admin`, `dispatcher`, and `service_provider` role groups. Sig
 
 - Move off Render and Supabase free tiers for live operations; configure Supabase automated backups and perform a restore drill.
 - Staff sign-in enforces TOTP or a recovery code for staff accounts. If the owner explicitly wants password-only access for the superuser, set `MFA_EXEMPT_SUPERUSER_EMAIL` in Render to that active superuser's exact email. This exception applies only to a superuser with that email; leave it blank to require MFA for every staff account. Password-only administrator access weakens account protection and should be limited to the named owner account.
-- Set `COMPANY_PHONE_NUMBER` and `COMPANY_WHATSAPP_NUMBER` in Render if those actions should work.
+- Set `COMPANY_PHONE_NUMBER=+255685496334` and `COMPANY_WHATSAPP_URL=https://wa.me/qr/F37XYALS2AS2I1` in Render for the office contact actions. These environment values override the same local defaults.
 - Review the privacy notice and data handling for Tanzania, including hosting customer names, phone numbers, and exact locations in Singapore. Confirm legal and owner approval before collecting real customer records.
 - Confirm map tile/geocoding service terms, retention/deletion procedures, monitoring and incident response. Logs should not include customer details.
 - Check the deployment and database health after every migration. Keep an off-site database export if operating without managed backup coverage.

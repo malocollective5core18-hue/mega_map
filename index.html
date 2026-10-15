@@ -936,7 +936,7 @@
     const API_BASE_URL = "";                       // e.g. "https://api.example.co.tz"
     const VERIFY_PROVIDER_CODE_ENDPOINT = "/api/provider-codes/verify";
     const SUBMIT_LOCATION_ENDPOINT = "/api/location-submissions";
-    let COMPANY_WHATSAPP_NUMBER = "";               // loaded from /api/public/config
+    let COMPANY_WHATSAPP_URL = "";                  // loaded from /api/public/config
     let COMPANY_PHONE_NUMBER = "";                  // loaded from /api/public/config
     const DEFAULT_MAP_CENTER = [-6.7924, 39.2083]; // Dar es Salaam
     const DEMO_MODE = false;
@@ -1029,7 +1029,7 @@
         const r = await fetchT(api("/api/public/config"));
         if (!r.ok) return;
         const config = await r.json();
-        if (typeof config.whatsappNumber === "string") COMPANY_WHATSAPP_NUMBER = config.whatsappNumber;
+        if (typeof config.whatsappUrl === "string") COMPANY_WHATSAPP_URL = config.whatsappUrl;
         if (typeof config.phoneNumber === "string") COMPANY_PHONE_NUMBER = config.phoneNumber;
         if (Number.isFinite(Number(config.locationWarningAccuracyM)) && Number(config.locationWarningAccuracyM) > 0) GPS_WARN_ACCURACY_M = Number(config.locationWarningAccuracyM);
         if (Number.isFinite(Number(config.locationMovingSpeedMps)) && Number(config.locationMovingSpeedMps) > 0) GPS_MOVING_SPEED_MPS = Number(config.locationMovingSpeedMps);
@@ -1331,10 +1331,9 @@
       closeSheet();
       $("customerStatusClose").focus({ preventScroll: true });
     }
-    function waLink(msg) { return COMPANY_WHATSAPP_NUMBER ? `https://wa.me/${COMPANY_WHATSAPP_NUMBER.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}` : null; }
-    function openWa(msg) { const u = waLink(msg); if (u) window.open(u, "_blank", "noopener"); else alert("WhatsApp number is not configured yet (COMPANY_WHATSAPP_NUMBER)."); }
-    function callOffice() { if (COMPANY_PHONE_NUMBER) location.href = "tel:" + COMPANY_PHONE_NUMBER.replace(/[^\d+]/g, ""); else alert("Office phone number is not configured yet (COMPANY_PHONE_NUMBER)."); }
-    const CODE_MSG = "Hello, I need a service provider code to share my business location for stocktaking services.";
+    function waLink() { return COMPANY_WHATSAPP_URL || null; }
+    function openWa() { const u = waLink(); if (u) window.open(u, "_blank", "noopener"); else alert("WhatsApp support is not configured yet."); }
+    function callOffice() { if (COMPANY_PHONE_NUMBER) location.href = "tel:" + COMPANY_PHONE_NUMBER.replace(/[^\d+]/g, ""); else alert("Office phone number is not configured yet."); }
     $("customerStatusClose").onclick = () => { $("customerStatusCard").hidden = true; document.body.classList.remove("customer-map-active"); $("share").focus({ preventScroll: true }); };
 
     /* ---------- workflow state machine ---------- */
@@ -1624,8 +1623,8 @@
     $("code").addEventListener("keydown", e => { if (e.key === "Enter") verifyProviderCode() });
     $("codePhone").addEventListener("keydown", e => { if (e.key === "Enter") verifyProviderCode() });
     $("noCode").onclick = e => { e.preventDefault(); goStep("nocode") };
-    $("nwa").onclick = () => openWa(CODE_MSG); $("ncall").onclick = callOffice;
-    $("supWa").onclick = () => openWa("Hello, I need help sharing my business location."); $("dwa").onclick = $("supWa").onclick;
+    $("nwa").onclick = openWa; $("ncall").onclick = callOffice;
+    $("supWa").onclick = openWa; $("dwa").onclick = $("supWa").onclick;
     $("supCall").onclick = callOffice;
     $("formGo").onclick = () => {
       if (!validateCustomerDetails()) return;
