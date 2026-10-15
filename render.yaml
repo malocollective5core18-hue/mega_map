@@ -19,9 +19,11 @@ services:
       - key: DJANGO_DEBUG
         value: "false"
       - key: DJANGO_ALLOWED_HOSTS
-        value: mauzosheet-mega-map.onrender.com
+        value: mega-map.onrender.com
+      - key: SITE_URL
+        value: https://mega-map.onrender.com
       - key: CSRF_TRUSTED_ORIGINS
-        value: https://mauzosheet-mega-map.onrender.com
+        value: https://mega-map.onrender.com
       - key: DATABASE_URL
         sync: false
       - key: DB_SSL_REQUIRE

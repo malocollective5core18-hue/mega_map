@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
+from html.parser import HTMLParser
+from struct import unpack
 from threading import Barrier, BrokenBarrierError
 from unittest import skipUnless
 from unittest.mock import patch
@@ -33,6 +35,150 @@ from .models import (
 )
 from .security import code_attempts_throttled, hash_value
 from .services import find_duplicate as real_find_duplicate
+
+
+class _PageHeadParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.meta = {}
+        self.links = {}
+        self.title = ""
+        self.in_title = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "meta":
+            key = attrs.get("property") or attrs.get("name")
+            if key:
+                self.meta[key] = attrs.get("content", "")
+        elif tag == "link":
+            rel = attrs.get("rel", "")
+            self.links[rel] = attrs.get("href", "")
+        elif tag == "title":
+            self.in_title = True
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self.in_title = False
+
+    def handle_data(self, data):
+        if self.in_title:
+            self.title += data
+
+
+class LinkPreviewMetadataTests(TestCase):
+    def setUp(self):
+        self.site_url = "https://preview.example"
+        self.client = APIClient()
+
+    @override_settings(SITE_URL="https://preview.example")
+    def test_public_home_has_complete_absolute_crawler_metadata(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        parser = _PageHeadParser()
+        parser.feed(response.content.decode())
+        raw_html = response.content.decode()
+
+        self.assertEqual(parser.title, "Mauzosheet, Hotbano & Services")
+        self.assertLessEqual(len(parser.title), 60)
+        self.assertLessEqual(len(parser.meta["description"]), 155)
+        self.assertEqual(parser.links["canonical"], f"{self.site_url}/")
+        ordered_tags = (
+            "<title>",
+            'name="description"',
+            'rel="canonical"',
+            'property="og:type"',
+            'name="twitter:card"',
+            'name="theme-color"',
+            'rel="icon"',
+            'rel="apple-touch-icon"',
+            'rel="manifest"',
+            'name="robots"',
+        )
+        positions = [raw_html.index(tag) for tag in ordered_tags]
+        self.assertEqual(positions, sorted(positions))
+        self.assertLess(max(positions), 8192)
+        self.assertIn("apple-touch-icon", parser.links)
+        self.assertIn("manifest", parser.links)
+        expected = {
+            "og:type": "website",
+            "og:site_name": "Mauzosheet, Hotbano & Services",
+            "og:title": parser.title,
+            "og:description": parser.meta["description"],
+            "og:url": f"{self.site_url}/",
+            "og:image:type": "image/png",
+            "og:image:width": "1200",
+            "og:image:height": "630",
+            "og:image:alt": "Mauzosheet map pin and business location service",
+            "og:locale": "sw_TZ",
+            "og:locale:alternate": "en_US",
+            "twitter:card": "summary_large_image",
+            "twitter:title": parser.title,
+            "twitter:description": parser.meta["description"],
+            "twitter:image:alt": "Mauzosheet map pin and business location service",
+            "theme-color": "#0f3d2e",
+            "robots": "index,follow",
+        }
+        for key, value in expected.items():
+            with self.subTest(meta=key):
+                self.assertEqual(parser.meta.get(key), value)
+        self.assertEqual(parser.meta["og:image"], parser.meta["og:image:secure_url"])
+        for key in ("og:url", "og:image", "og:image:secure_url", "twitter:image"):
+            with self.subTest(url=key):
+                self.assertTrue(parser.meta[key].startswith(self.site_url + "/"))
+                self.assertTrue(parser.meta[key].startswith("https://"))
+        metadata = " ".join(parser.meta.values())
+        for private_value in ("+255712345678", "TEST-CUSTOMER-KEY", "-6.812345", "39.289876"):
+            self.assertNotIn(private_value, metadata)
+
+    def test_anonymous_crawler_user_agents_get_home_without_cookie_or_redirect(self):
+        agents = ("WhatsApp/2.24", "facebookexternalhit/1.1", "Twitterbot", "TelegramBot")
+        for agent in agents:
+            with self.subTest(user_agent=agent):
+                response = self.client.get("/", HTTP_USER_AGENT=agent)
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(response.cookies)
+                head_response = self.client.head("/", HTTP_USER_AGENT=agent)
+                self.assertEqual(head_response.status_code, 200)
+
+    def test_staff_admin_and_api_responses_are_noindex_without_open_graph(self):
+        for path in ("/staff/", "/admin/", "/api/public/config"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertIn("noindex", response.headers.get("X-Robots-Tag", ""))
+                body = response.content.decode(errors="replace")
+                self.assertNotIn("property=\"og:", body)
+                if path == "/staff/" and "html" in response.headers.get("Content-Type", ""):
+                    parser = _PageHeadParser()
+                    parser.feed(body)
+                    self.assertEqual(parser.meta.get("robots"), "noindex,nofollow")
+
+    @override_settings(SITE_URL="https://preview.example")
+    def test_robots_and_sitemap_only_expose_public_home(self):
+        robots = self.client.get("/robots.txt")
+        self.assertEqual(robots.status_code, 200)
+        robots_text = robots.content.decode()
+        self.assertIn("Allow: /", robots_text)
+        for path in ("/staff/", "/api/", "/admin/"):
+            self.assertIn(f"Disallow: {path}", robots_text)
+        self.assertIn(f"Sitemap: {self.site_url}/sitemap.xml", robots_text)
+
+        sitemap = self.client.get("/sitemap.xml")
+        self.assertEqual(sitemap.status_code, 200)
+        self.assertEqual(sitemap["Content-Type"], "application/xml")
+        self.assertEqual(sitemap.content.decode().count("<loc>"), 1)
+        self.assertIn(f"<loc>{self.site_url}/</loc>", sitemap.content.decode())
+
+
+class LinkPreviewImageTests(TestCase):
+    def test_versioned_share_image_is_public_png_at_required_dimensions(self):
+        response = self.client.get("/static/og/share-1200x630-v1.png", HTTP_HOST="localhost")
+        content = b"".join(response.streaming_content) if response.streaming else response.content
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.headers.get("Content-Type", "").startswith("image/png"))
+        self.assertLess(len(content), 300 * 1024)
+        self.assertEqual(content[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(unpack(">II", content[16:24]), (1200, 630))
 
 
 class PublicPrivacyTests(TestCase):

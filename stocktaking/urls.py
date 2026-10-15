@@ -3,13 +3,40 @@ from django.http import HttpResponse
 from django.shortcuts import render
 from django.conf import settings
 from django.urls import include, path
-from django.views.generic import TemplateView
 
 from core.mfa import is_mfa_verified
 
 
 def healthz(_request):
     return HttpResponse(status=204)
+
+
+def robots_txt(_request):
+    content = "\n".join(
+        (
+            "User-agent: *",
+            "Allow: /",
+            "Disallow: /staff/",
+            "Disallow: /api/",
+            "Disallow: /admin/",
+            f"Sitemap: {settings.SITE_URL}/sitemap.xml",
+            "",
+        )
+    )
+    return HttpResponse(content, content_type="text/plain; charset=utf-8")
+
+
+def sitemap_xml(_request):
+    return HttpResponse(
+        f'<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"<url><loc>{settings.SITE_URL}/</loc></url></urlset>",
+        content_type="application/xml",
+    )
+
+
+def public_home(request):
+    return render(request, "index.html", {"site_url": settings.SITE_URL})
 
 
 def staff_home(request):
@@ -42,7 +69,9 @@ def staff_home(request):
 
 urlpatterns = [
     path("healthz", healthz, name="healthz"),
-    path("", TemplateView.as_view(template_name="index.html"), name="home"),
+    path("robots.txt", robots_txt, name="robots"),
+    path("sitemap.xml", sitemap_xml, name="sitemap"),
+    path("", public_home, name="home"),
     path("staff/", staff_home, name="staff-home"),
     path("admin/", admin.site.urls),
     path("api/", include("core.urls")),

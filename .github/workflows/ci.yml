@@ -29,6 +29,7 @@ jobs:
       DJANGO_SECRET_KEY: ci-only-not-a-production-secret-0123456789-abcdefghijklmnopqrstuvwxyz
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       CSRF_TRUSTED_ORIGINS: http://localhost:8000
+      SITE_URL: https://preview.example
       DATABASE_URL: postgres://mauzosheet:ci-only-password@127.0.0.1:5432/mauzosheet
       DB_SSL_REQUIRE: "false"
       DJANGO_SETTINGS_MODULE: stocktaking.settings.ci
@@ -51,6 +52,12 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
       - name: Migrate empty PostgreSQL database
         run: python manage.py migrate --noinput
+      - name: Collect static assets for WhiteNoise checks
+        env:
+          DJANGO_SETTINGS_MODULE: stocktaking.settings.ci
+        run: python manage.py collectstatic --noinput
+      - name: Run link preview metadata and static image checks
+        run: python manage.py test core.tests.LinkPreviewMetadataTests core.tests.LinkPreviewImageTests
       - name: Run PostgreSQL test suite with coverage
         run: |
           python -m pip install coverage

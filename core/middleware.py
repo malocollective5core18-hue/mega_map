@@ -7,15 +7,26 @@ class PrivateStaffNoStoreMiddleware:
     """Prevent browsers and shared proxies from caching staff/API identity pages."""
 
     PRIVATE_PREFIXES = ("/staff/", "/admin/", "/api/admin/", "/api/auth/")
+    NOINDEX_PREFIXES = ("/staff/", "/admin/", "/api/")
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
         response = self.get_response(request)
-        if request.path.startswith(self.PRIVATE_PREFIXES):
+        is_private = any(
+            request.path == prefix.rstrip("/") or request.path.startswith(prefix)
+            for prefix in self.PRIVATE_PREFIXES
+        )
+        is_noindex = any(
+            request.path == prefix.rstrip("/") or request.path.startswith(prefix)
+            for prefix in self.NOINDEX_PREFIXES
+        )
+        if is_private:
             response["Cache-Control"] = "no-store, private"
             response["Pragma"] = "no-cache"
+        if is_noindex:
+            response["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
 

@@ -9,6 +9,7 @@ if not SECRET_KEY:
     raise RuntimeError("Set DJANGO_SECRET_KEY in the environment.")
 
 DEBUG = False
+SITE_URL = os.environ.get("SITE_URL", "https://example.test").strip().rstrip("/")
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
@@ -107,8 +108,9 @@ LANGUAGE_CODE = "en-tz"
 TIME_ZONE = "Africa/Dar_es_Salaam"
 USE_I18N = True
 USE_TZ = True
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+WHITENOISE_MAX_AGE = 31536000
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
