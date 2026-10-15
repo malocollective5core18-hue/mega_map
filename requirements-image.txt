@@ -1,0 +1,2 @@
+# Developer-only dependency used to regenerate scripts/make_og_image.py output.
+Pillow==12.1.1
