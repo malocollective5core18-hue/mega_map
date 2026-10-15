@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from .models import AuditLog, CodeAttempt, ProviderCode, VerificationSession
+from .models import AuditLog, CodeAttempt, CustomerBusiness, ProviderCode, VerificationSession
 
 
 def hash_value(value):
@@ -30,7 +30,7 @@ def record_audit(*, request=None, actor=None, action, object_type, object_id="",
 
 
 def issue_provider_code(
-    *, target_phone, expires_at, max_uses=1, label="", created_by=None, reusable=False
+    *, target_phone, expires_at, max_uses=1, label="", created_by=None, reusable=False, business=None
 ):
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     raw_code = "".join(secrets.choice(alphabet) for _ in range(16))
@@ -38,6 +38,8 @@ def issue_provider_code(
         code_hash=hash_value(raw_code),
         target_phone_hash=hash_value("provider-phone:" + target_phone),
         target_phone_last4=target_phone[-4:],
+        business=business,
+        legacy_phone_lookup=False,
         expires_at=expires_at,
         max_uses=max_uses,
         reusable=reusable,
@@ -60,6 +62,21 @@ def verify_provider_code(raw_code, target_phone, *, request=None):
     ):
         CodeAttempt.objects.create(code_hash=digest)
         return None
+    if code.business_id is not None and code.business.phone != target_phone:
+        CodeAttempt.objects.create(code_hash=digest)
+        return None
+    if code.business_id is None and code.legacy_phone_lookup:
+        matches = list(
+            CustomerBusiness.objects.filter(phone=target_phone)
+            .order_by("-created_at")[:2]
+        )
+        if len(matches) > 1:
+            CodeAttempt.objects.create(code_hash=digest)
+            return "ambiguous_business"
+        if matches:
+            code.business = matches[0]
+            code.legacy_phone_lookup = False
+            code.save(update_fields=["business", "legacy_phone_lookup"])
     ttl = min(settings.PROVIDER_CODE_TTL_SECONDS, 30 * 60)
     token = secrets.token_urlsafe(32)
     now = timezone.now()

@@ -52,8 +52,6 @@ def rounded_public_coordinate(value):
 
 
 def find_duplicate(*, phone, latitude, longitude):
-    if CustomerBusiness.objects.filter(phone=phone).exists():
-        return True
     lat = float(latitude)
     lng = float(longitude)
     lat_delta = 30 / 111_320

@@ -14,6 +14,14 @@ class ProviderCode(models.Model):
     code_hash = models.CharField(max_length=64, unique=True)
     target_phone_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     target_phone_last4 = models.CharField(max_length=4, blank=True, default="")
+    business = models.ForeignKey(
+        "CustomerBusiness",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="provider_codes",
+    )
+    legacy_phone_lookup = models.BooleanField(default=True)
     label = models.CharField(max_length=120, blank=True)
     status = models.CharField(
         max_length=12, choices=Status.choices, default=Status.ACTIVE, db_index=True

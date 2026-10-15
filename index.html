@@ -50,7 +50,8 @@
       --r: 14px;
       --page-footer-height: max(32px, calc(24px + env(safe-area-inset-bottom)));
       --visible-viewport-height: 100dvh;
-      --visible-viewport-bottom: 0px
+      --visible-viewport-bottom: 0px;
+      --visible-viewport-center: 50vh
     }
 
     * {
@@ -553,6 +554,53 @@
       border-radius: 14px 14px 0 0
     }
 
+    #sheet.centered-form {
+      top: var(--visible-viewport-center);
+      right: auto;
+      bottom: auto;
+      left: 50%;
+      width: min(520px, calc(100vw - 24px));
+      max-height: calc(var(--visible-viewport-height) - 20px);
+      border-radius: 18px;
+      transform: translate(-50%, 110vh)
+    }
+
+    #sheet.centered-form.open { transform: translate(-50%, -50%) }
+    #sheet.centered-form.keyboard-open { max-height: calc(var(--visible-viewport-height) - 12px) }
+
+    #sheet.map-drawer {
+      right: 10px;
+      bottom: calc(var(--page-footer-height) + 8px);
+      left: 10px;
+      width: min(500px, calc(100vw - 20px));
+      max-height: min(64vh, calc(var(--visible-viewport-height) - 16px));
+      margin-inline: auto;
+      padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+      border-radius: 18px;
+      transform: translateY(calc(100% + 20px))
+    }
+
+    #sheet.map-drawer.open { transform: none }
+    #sheet.map-drawer.map-drawer-collapsed { height: 112px; max-height: 112px; overflow: hidden }
+    .location-drawer-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center }
+    .drawer-grip { width: 34px; height: 4px; margin: 0 auto 7px; border-radius: 4px; background: #aab8af }
+    .drawer-location-summary { min-width: 0 }
+    .drawer-location-summary strong,.drawer-location-summary span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    .drawer-location-summary strong { color: var(--g); font-size: 12px }
+    .drawer-location-summary span { margin-top: 3px; color: var(--mu); font-size: 10px }
+    .drawer-head-actions { display: flex; gap: 6px; align-items: center }
+    .drawer-head-actions .btn { min-height: 38px; padding-inline: 10px; white-space: nowrap }
+    #toggleLocationDrawer { color: var(--g); background: #eef5f0 }
+    #locationDrawerContent { max-height: calc(var(--visible-viewport-height) - 142px); margin-top: 9px; overflow: auto; overscroll-behavior: contain; transition: opacity .18s ease }
+    #sheet.map-drawer-collapsed #locationDrawerContent { max-height: 0; margin-top: 0; overflow: hidden; opacity: 0; pointer-events: none }
+    #sheet.map-drawer-collapsed { padding-bottom: max(10px, env(safe-area-inset-bottom)) }
+
+    @media(max-width:380px) {
+      .location-drawer-head { grid-template-columns: 1fr }
+      .drawer-head-actions { display: grid; grid-template-columns: 1fr 1fr }
+      #sheet.map-drawer.map-drawer-collapsed { height: 138px; max-height: 138px }
+    }
+
     input.f[aria-invalid=true] {
       border-color: var(--er)
     }
@@ -579,6 +627,9 @@
       position: relative;
       margin: 8px 0 12px
     }
+
+    .place-search[hidden] { display: none }
+    .optional-search-toggle { margin-top: 10px; font-size: 11px }
 
     .place-search label {
       margin-top: 0
@@ -829,7 +880,7 @@
       <h2>Welcome back</h2>
       <p id="accountWelcome"></p>
       <p id="accountServiceStatus" class="note"></p>
-      <p class="note">We found a business registered to this phone. Review its details and location; save to update the registered business.</p>
+      <p class="note">This key is linked to one business profile. Review its details; only this profile will be updated.</p>
       <div class="acts"><button class="btn acc" id="accountEdit">Review / edit business details</button><button class="btn ghost" id="accountViewMap">View my location</button><button class="btn ghost" id="accountSignOut">Close</button></div>
     </div>
 
@@ -858,44 +909,55 @@
     </div>
 
     <div class="step" data-s="locate">
-      <h2>Choose your business location</h2>
-      <p class="note">We’ll find your starting point. Check the pin, then confirm it’s at your business entrance.</p>
-      <div class="place-search">
-        <label for="locationSearch">Search an area or landmark <span class="note">(optional)</span></label>
-        <input id="locationSearch" type="search" autocomplete="off" placeholder="Start typing a place name…"
-          role="combobox" aria-autocomplete="list" aria-controls="locationResults" aria-expanded="false">
-        <div id="locationResults" role="listbox" aria-label="Matching places" hidden></div>
-        <p class="place-attribution">Suggestions by <a class="lnk" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> via Photon.</p>
+      <div class="location-drawer-head">
+        <div class="drawer-location-summary">
+          <div class="drawer-grip" aria-hidden="true"></div>
+          <strong id="drawerPlace">Choose your business location</strong>
+          <span id="drawerLocationStatus" role="status" aria-live="polite">The map is ready. Pin your point at the business entrance.</span>
+        </div>
+        <div class="drawer-head-actions">
+          <button class="btn acc" id="pinMyPoint" type="button">Pin my point</button>
+          <button class="btn ghost" id="toggleLocationDrawer" type="button" aria-expanded="false" aria-controls="locationDrawerContent">Review pin and confirm</button>
+        </div>
       </div>
-      <p id="locSt" class="st" role="status"></p>
-      <div id="locErr" class="err" role="alert"></div>
-      <div class="location-summary"><strong id="place">Waiting for a location</strong><span>Move the pin onto your business entrance if needed.</span></div>
-      <details class="privacy-details">
-        <summary>How we use your location · Tunavyotumia eneo lako</summary>
-        <p>Your device provides an estimated location. We send the pin you confirm, its reported accuracy and source, and the business details you entered to our company so staff can find and serve you. We use one location capture you start; we do not track you afterwards. Search suggestions are approximate. / Kifaa chako hutoa makadirio ya eneo. Tunatuma pini unayothibitisha, usahihi na chanzo kinachoripotiwa, pamoja na taarifa za biashara ulizoweka ili timu ikutafute na kukuhudumia. Tunatumia kipimo kimoja unachoanzisha; hatufuatilii eneo lako baadaye. Mapendekezo ya utafutaji ni makadirio.</p>
-        <p class="place-attribution">Search text is sent to Photon to find suggestions. Public-map listing is optional and controlled separately below.</p>
-      </details>
-      <details class="privacy-details">
-        <summary>Location precision details</summary>
-        <dl>
-        <dt>Latitude</dt>
-        <dd id="lat">–</dd>
-        <dt>Longitude</dt>
-        <dd id="lng">–</dd>
-        <dt>Place</dt>
-        <dd id="placeDetail">–</dd>
-        <dt>Accuracy</dt><dd id="acc">–</dd>
-        <dt>Source</dt><dd id="sourceDetail">–</dd>
-        <dt>Fix age</dt><dd id="ageDetail">–</dd>
-        <dt>Pin offset</dt><dd id="offsetDetail">–</dd>
-        </dl>
-      </details>
-      <p class="note"><b id="customerBusinessSummary"></b></p>
-      <label class="layerOption confirm-share" for="confirmShare"><input id="confirmShare" type="checkbox"> I confirm this pin marks my business and agree to share these details with the company so the team can find me. / Ninathibitisha pini hii ni ya biashara yangu na nakubali kutuma taarifa hizi kwa kampuni.</label>
-      <label class="layerOption" for="publicListing"><input id="publicListing" type="checkbox"> I agree that, after we have served my business, its business name and approximate area may appear on the public map.</label>
-      <div id="subErr" class="err" role="alert"></div>
-      <p id="submitProgress" class="submit-progress" role="status" hidden><span class="spin" aria-hidden="true"></span>Sending your location securely… / Inatuma eneo lako…</p>
-      <div class="acts"><button class="btn acc" id="send" disabled>Confirm and send</button><button class="btn ghost" id="retry">Update GPS</button><button class="btn ghost" id="editDetails">Edit details</button><button class="btn ghost" id="stop2">Cancel</button></div>
+      <div id="locationDrawerContent">
+        <h2>Choose your business location</h2>
+        <p class="note">Your map pin marks the place our team should visit. Drag it onto your business entrance, then review and confirm.</p>
+        <p id="locSt" class="st" role="status"></p>
+        <div id="locErr" class="err" role="alert"></div>
+        <div class="location-summary"><strong id="place">Waiting for a location</strong><span>Drag the pin to your business entrance if needed.</span></div>
+        <details class="privacy-details">
+          <summary>How we use your location · Tunavyotumia eneo lako</summary>
+          <p>Your device provides an estimated location. We send the pin you confirm, its reported accuracy and source, and the business details you entered to our company so staff can find and serve you. We use one location capture you start; we do not track you afterwards. Search suggestions are approximate. / Kifaa chako hutoa makadirio ya eneo. Tunatuma pini unayothibitisha, usahihi na chanzo kinachoripotiwa, pamoja na taarifa za biashara ulizoweka ili timu ikutafute na kukuhudumia. Tunatumia kipimo kimoja unachoanzisha; hatufuatilii eneo lako baadaye. Mapendekezo ya utafutaji ni makadirio.</p>
+          <p class="place-attribution">Search text is sent to Photon to find suggestions. Public-map listing is optional and controlled separately below.</p>
+        </details>
+        <details class="privacy-details">
+          <summary>Location precision details</summary>
+          <dl>
+          <dt>Latitude</dt><dd id="lat">–</dd>
+          <dt>Longitude</dt><dd id="lng">–</dd>
+          <dt>Place</dt><dd id="placeDetail">–</dd>
+          <dt>Accuracy</dt><dd id="acc">–</dd>
+          <dt>Source</dt><dd id="sourceDetail">–</dd>
+          <dt>Fix age</dt><dd id="ageDetail">–</dd>
+          <dt>Pin offset</dt><dd id="offsetDetail">–</dd>
+          </dl>
+        </details>
+        <p class="note"><b id="customerBusinessSummary"></b></p>
+        <label class="layerOption confirm-share" for="confirmShare"><input id="confirmShare" type="checkbox"> I confirm this pin marks my business and agree to share these details with the company so the team can find me. / Ninathibitisha pini hii ni ya biashara yangu na nakubali kutuma taarifa hizi kwa kampuni.</label>
+        <label class="layerOption" for="publicListing"><input id="publicListing" type="checkbox"> I agree that, after we have served my business, its business name and approximate area may appear on the public map.</label>
+        <div id="subErr" class="err" role="alert"></div>
+        <p id="submitProgress" class="submit-progress" role="status" hidden><span class="spin" aria-hidden="true"></span>Sending your location securely… / Inatuma eneo lako…</p>
+        <div class="acts"><button class="btn acc" id="send" disabled>Confirm and send</button><button class="btn ghost" id="retry">Pin my point again</button><button class="btn ghost" id="editDetails">Edit details</button><button class="btn ghost" id="stop2">Cancel</button></div>
+        <button id="toggleLocationSearch" class="btn ghost optional-search-toggle" type="button" aria-expanded="false" aria-controls="locationSearchPanel">Search by area names (optional)</button>
+        <div id="locationSearchPanel" class="place-search" hidden>
+          <label for="locationSearch">Search an area name or landmark</label>
+          <input id="locationSearch" type="search" autocomplete="off" placeholder="Search by area name…"
+            role="combobox" aria-autocomplete="list" aria-controls="locationResults" aria-expanded="false">
+          <div id="locationResults" role="listbox" aria-label="Matching places" hidden></div>
+          <p class="place-attribution">Suggestions by <a class="lnk" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> via Photon. Confirm the exact entrance by moving the pin.</p>
+        </div>
+      </div>
     </div>
 
     <div class="step" data-s="done">
@@ -941,12 +1003,12 @@
     const DEFAULT_MAP_CENTER = [-6.7924, 39.2083]; // Dar es Salaam
     const DEMO_MODE = false;
     const REQUEST_TIMEOUT_MS = 12000, GPS_TIMEOUT_MS = 20000;
-    const GPS_ACQUIRE_MS = 15000, GPS_TARGET_ACCURACY_M = 30;
+    const GPS_ACQUIRE_MS = 20000, GPS_TARGET_ACCURACY_M = 30;
     let GPS_WARN_ACCURACY_M = 50, GPS_MOVING_SPEED_MPS = 1.5;
     /* =================================================================== */
 
     const $ = id => document.getElementById(id);
-    const st = { step: null, token: null, code: "", verificationExpiresAt: null, customerExisting: false, customerStatus: "submitted", d: { name: "", biz: "", phone: "" }, pos: null, gpsFix: null, busy: false, gpsId: 0, gpsWatch: null, gpsTimer: null, gpsBest: null, gpsMaxSpeedMps: null, idempotencyKey: null, sent: false, ref: null, lastFocus: null };
+    const st = { step: null, token: null, code: "", verificationExpiresAt: null, customerExisting: false, customerStatus: "submitted", d: { name: "", biz: "", phone: "" }, pos: null, gpsFix: null, gpsPending: false, busy: false, gpsId: 0, gpsWatch: null, gpsTimer: null, gpsBest: null, gpsMaxSpeedMps: null, idempotencyKey: null, sent: false, ref: null, lastFocus: null };
     const sheet = $("sheet"), visualViewport = window.visualViewport;
     let viewportUpdateTimer;
     function syncKeyboardViewport() {
@@ -955,6 +1017,7 @@
       const bottomGap = Math.max(0, window.innerHeight - height - offsetTop);
       document.documentElement.style.setProperty("--visible-viewport-height", `${Math.round(height)}px`);
       document.documentElement.style.setProperty("--visible-viewport-bottom", `${Math.round(bottomGap)}px`);
+      document.documentElement.style.setProperty("--visible-viewport-center", `${Math.round(offsetTop + height / 2)}px`);
       const active = document.activeElement;
       const editable = active && (active.matches("input, textarea, select") || active.isContentEditable);
       const keyboardOpen = Boolean(editable && window.innerHeight - height > 120);
@@ -1113,15 +1176,19 @@
       const fixTimestamp = options.fixTimestamp ?? fix?.fixTimestamp ?? (movementWithoutOriginalFix ? null : st.pos?.fixTimestamp ?? null);
       let pinOffsetMeters = movementWithoutOriginalFix ? null : (options.pinOffsetMeters ?? null);
       if (fix) pinOffsetMeters = Number(distanceMeters(fix.lat, fix.lng, lat, lng).toFixed(2));
+      st.gpsPending = false;
+      setPinButtonBusy(false);
       st.pos = { lat, lng, acc: acc ?? null, place: placeLabel || (acc == null ? "Manually adjusted map pin" : "GPS location"), locationSource: source, fixTimestamp, pinOffsetMeters, pinMovedByHand: movedByHand };
       $("lat").textContent = lat.toFixed(6); $("lng").textContent = lng.toFixed(6);
       $("acc").textContent = acc != null ? "about " + Math.round(acc) + " m" : "not reported";
       $("place").textContent = placeLabel || (acc != null ? "GPS location — check the pin" : "Manually adjusted map pin");
+      $("drawerPlace").textContent = st.d.biz || "Business location";
+      setDrawerLocationStatus(source === "gps" ? `Device pin placed · about ${Math.round(acc || 0)} m reported accuracy` : "Pin placed on the map · drag it to the business entrance if needed.");
       $("placeDetail").textContent = $("place").textContent;
       $("sourceDetail").textContent = source === "gps" ? "Device GPS estimate" : "Manually selected pin";
       $("ageDetail").textContent = fixTimestamp ? `${Math.max(0, Math.round((Date.now() - Date.parse(fixTimestamp)) / 1000))} seconds` : "not available";
       $("offsetDetail").textContent = pinOffsetMeters == null ? "not available" : `${Math.round(pinOffsetMeters)} m`;
-      $("send").disabled = st.sent || !$("confirmShare").checked;
+      $("send").disabled = st.sent || st.gpsPending || !$("confirmShare").checked;
       $("customerBusinessSummary").textContent = st.d.biz ? `${st.d.biz} · ${st.d.name}` : "";
       saveWorkflowDraft();
       if (!mapOk) return;
@@ -1137,7 +1204,7 @@
           icon: L.divIcon({ className: "selected-pin-wrapper", html: '<div class="selected-location-pin"></div>', iconSize: [34, 42], iconAnchor: [17, 40] })
         }).addTo(map);
         marker.on("dragstart", () => { $("locSt").textContent = "Moving pin. Drop it directly on your business entrance."; });
-        marker.on("dragend", () => { ++st.gpsId; stopGpsAcquisition(); const p = marker.getLatLng(); updateSelectedMapLocation(p.lat, p.lng, st.pos?.acc, undefined, "Manually adjusted map pin", { source: "manual_pin", pinMovedByHand: true, animate: true }); $("locSt").textContent = "Pin moved. Check that it marks the correct entrance." });
+        marker.on("dragend", () => { ++st.gpsId; stopGpsAcquisition(); const p = marker.getLatLng(); updateSelectedMapLocation(p.lat, p.lng, st.pos?.acc, undefined, "Manually adjusted map pin", { source: "manual_pin", pinMovedByHand: true, animate: true }); $("locSt").textContent = "Pin moved. Check that it marks the correct entrance."; setDrawerLocationStatus("Pin moved · review it and confirm the entrance."); });
       } else marker.setLatLng([lat, lng]);
       if (movedCoordinates || options.animate === true) {
         requestAnimationFrame(() => {
@@ -1156,6 +1223,40 @@
       const results = $("locationResults");
       results.hidden = true;
       $("locationSearch").setAttribute("aria-expanded", "false");
+    }
+
+    function setDrawerLocationStatus(message) {
+      const status = $("drawerLocationStatus");
+      if (status) status.textContent = message;
+    }
+
+    function setLocationDrawerExpanded(expanded) {
+      const button = $("toggleLocationDrawer");
+      const collapsed = !expanded;
+      sheet.classList.toggle("map-drawer-collapsed", collapsed);
+      button.setAttribute("aria-expanded", String(expanded));
+      button.textContent = expanded ? "Hide details" : "Review pin and confirm";
+      sheet.setAttribute("aria-modal", "false");
+    }
+
+    function setPinButtonBusy(busy) {
+      const button = $("pinMyPoint");
+      button.disabled = busy;
+      if (busy) {
+        button.setAttribute("aria-busy", "true");
+        button.innerHTML = '<span class="spin" aria-hidden="true"></span>Finding…';
+      } else {
+        button.removeAttribute("aria-busy");
+        button.textContent = "Pin my point";
+      }
+    }
+
+    function openLocationStep() {
+      goStep("locate");
+      setLocationDrawerExpanded(false);
+      setDrawerLocationStatus(st.pos
+        ? "Saved pin is on the map. Tap Pin my point for a fresh device location, or drag the pin."
+        : "The map is ready. Tap Pin my point to place your device location, or tap the map.");
     }
     function placeName(properties) {
       const street = [properties.housenumber, properties.street].filter(Boolean).join(" ");
@@ -1388,10 +1489,15 @@
       $("dock").inert = true; document.querySelector(".bar").inert = true; document.querySelector(".ctl").inert = true;
     }
     function goStep(s) {
-      if (st.step === "locate" && s !== "locate") { ++st.gpsId; stopGpsAcquisition(); st.gpsBest = null; st.gpsMaxSpeedMps = null; }
+      if (st.step === "locate" && s !== "locate") { ++st.gpsId; stopGpsAcquisition(); st.gpsPending = false; st.gpsBest = null; st.gpsMaxSpeedMps = null; $("send").disabled = st.sent || !st.pos || !$("confirmShare").checked; }
       st.step = s;
       document.querySelectorAll(".step").forEach(e => e.classList.toggle("on", e.dataset.s === s));
-      const sh = $("sheet"); sh.classList.add("open"); sh.scrollTop = 0;
+      const sh = $("sheet");
+      sh.classList.toggle("centered-form", s === "form");
+      sh.classList.toggle("map-drawer", s === "locate");
+      sh.setAttribute("aria-modal", s === "locate" ? "false" : "true");
+      if (s === "locate") setLocationDrawerExpanded(false);
+      sh.classList.add("open"); sh.scrollTop = 0;
       const f = sh.querySelector(`.step[data-s="${s}"] input,.step[data-s="${s}"] button`); f && f.focus({ preventScroll: true });
       if (mapOk) setTimeout(() => map.invalidateSize(), 260);
       saveWorkflowDraft();
@@ -1414,7 +1520,7 @@
       st.gpsId++; stopGpsAcquisition(); if (st.watch != null) { navigator.geolocation.clearWatch(st.watch); st.watch = null }
       if (captureAccuracyLayer && mapOk) map.removeLayer(captureAccuracyLayer);
       captureAccuracyLayer = null;
-      Object.assign(st, { token: null, code: "", verificationExpiresAt: null, customerExisting: false, customerStatus: "submitted", d: { name: "", biz: "", phone: "" }, pos: null, gpsFix: null, gpsBest: null, gpsMaxSpeedMps: null, busy: false, idempotencyKey: null, sent: false, ref: null });
+      Object.assign(st, { token: null, code: "", verificationExpiresAt: null, customerExisting: false, customerStatus: "submitted", d: { name: "", biz: "", phone: "" }, pos: null, gpsFix: null, gpsPending: false, gpsBest: null, gpsMaxSpeedMps: null, busy: false, idempotencyKey: null, sent: false, ref: null });
       ["code", "codePhone", "cn", "bn", "ph"].forEach(i => $(i).value = "");
       $("publicListing").checked = false; $("confirmShare").checked = false;
       $("customerStatusCard").hidden = true; document.body.classList.remove("customer-map-active");
@@ -1446,6 +1552,7 @@
           if (r.status === 401 || r.status === 403) throw new Error("The request was blocked. Refresh this page and try again; contact the company if it continues.");
           if (r.status === 410) throw new Error("This code has expired. Please request a new one.");
           if (r.status === 429) throw new Error("Too many attempts. Please wait and try again.");
+          if (r.status === 409) { const problem = await r.json().catch(() => ({})); throw new Error(problem?.error?.message || "This key needs to be linked to a business profile. Contact the company for help."); }
           if (!r.ok) throw new Error("Server error. Please try again shortly.");
           let j; try { j = await r.json() } catch { throw new Error("Unexpected server reply. Please try again.") }
           if (j.valid !== true || typeof j.verificationToken !== "string") throw new Error("This code could not be verified. Check it and try again.");
@@ -1462,7 +1569,7 @@
               : null;
             $("cn").value = st.d.name; $("bn").value = st.d.biz; $("ph").value = st.d.phone; $("publicListing").checked = customer.publicListing === true;
             if (st.pos) updateSelectedMapLocation(st.pos.lat, st.pos.lng, st.pos.acc, 16, st.pos.place, { source: "manual_pin" });
-            $("accountWelcome").textContent = `Signed in as ${st.d.name} · ${st.d.biz} (${st.d.phone}).`;
+            $("accountWelcome").textContent = `Signed in to ${st.d.biz} · ${st.d.name} (${st.d.phone}).`;
             $("accountServiceStatus").textContent = `Current service status: ${serviceStatusText(st.customerStatus)}.`;
           } else {
             st.customerExisting = false; st.pos = null;
@@ -1496,20 +1603,28 @@
       stopGpsAcquisition();
       clearTimeout(placeSearchTimer); ++placeSearchSequence; placeSearchController?.abort();
       $("locationSearch").value = ""; hidePlaceResults();
-      const id = ++st.gpsId; st.gpsBest = null; st.gpsMaxSpeedMps = null; showErrorMessage("locErr", ""); goStep("locate");
-      if (!("geolocation" in navigator)) { $("locSt").textContent = ""; showErrorMessage("locErr", "This browser cannot get your location. Tap the map to place the pin manually."); return; }
-      if (!window.isSecureContext) { $("retry").disabled = false; $("locSt").textContent = ""; showErrorMessage("locErr", "GPS requires a secure HTTPS connection. You can place the pin on the map instead."); return; }
-      $("locSt").innerHTML = '<span class="spin" style="border-color:#0f3d2e55;border-top-color:#0f3d2e"></span>Finding GPS location… keep the phone still and in an open area.'; $("retry").disabled = true;
+      const id = ++st.gpsId; st.gpsBest = null; st.gpsFix = null; st.gpsMaxSpeedMps = null; showErrorMessage("locErr", ""); goStep("locate");
+      st.gpsPending = true; $("send").disabled = true;
+      if (!("geolocation" in navigator) || typeof navigator.geolocation.watchPosition !== "function") { st.gpsPending = false; setPinButtonBusy(false); $("retry").disabled = false; $("locSt").textContent = ""; $("send").disabled = st.sent || !st.pos || !$("confirmShare").checked; const message = "This browser cannot get your device location. Tap the map to place the pin manually."; setDrawerLocationStatus(message); showErrorMessage("locErr", message); return; }
+      if (!window.isSecureContext) { st.gpsPending = false; setPinButtonBusy(false); $("retry").disabled = false; $("locSt").textContent = ""; $("send").disabled = st.sent || !st.pos || !$("confirmShare").checked; const message = "Device location requires a secure HTTPS connection. You can place the pin on the map instead."; setDrawerLocationStatus(message); showErrorMessage("locErr", message); return; }
+      setPinButtonBusy(true);
+      const searchingMessage = st.pos ? "Finding a fresh device location… your saved pin stays visible." : "Finding your device location… keep the phone still and in an open area.";
+      $("locSt").innerHTML = '<span class="spin" style="border-color:#0f3d2e55;border-top-color:#0f3d2e"></span>' + searchingMessage;
+      setDrawerLocationStatus(searchingMessage);
+      $("retry").disabled = true;
       const finish = (timeout = false) => {
         if (id !== st.gpsId) return;
         ++st.gpsId;
-        stopGpsAcquisition(); $("retry").disabled = false;
+        stopGpsAcquisition(); st.gpsPending = false; setPinButtonBusy(false); $("retry").disabled = false;
         if (!st.gpsBest) {
           st.gpsBest = null; st.gpsMaxSpeedMps = null;
           $("locSt").textContent = "";
-          showErrorMessage("locErr", timeout
+          $("send").disabled = st.sent || !st.pos || !$("confirmShare").checked;
+          const message = (timeout
             ? "Location request timed out. Move outdoors, check location permission, then retry or place the pin on the map."
-            : "No GPS fix was received. Move outdoors, check location permission, then retry or place the pin on the map.");
+            : "No device location was received. Move outdoors, check location permission, then retry or place the pin on the map.") + (st.pos ? " Your previously saved pin is still shown; review it before sending." : "");
+          setDrawerLocationStatus(message);
+          showErrorMessage("locErr", message);
           return;
         }
         const best = st.gpsBest, maxSpeedMps = st.gpsMaxSpeedMps;
@@ -1517,7 +1632,10 @@
         if (maxSpeedMps != null && maxSpeedMps > GPS_MOVING_SPEED_MPS) {
           st.gpsFix = null;
           $("locSt").textContent = "";
-          showErrorMessage("locErr", "Your device reports that you are moving. Stand at the business entrance and retry GPS, or place the pin manually.");
+          $("send").disabled = st.sent || !st.pos || !$("confirmShare").checked;
+          const message = "Your device reports movement. Stand still and tap Pin my point again, or place the pin manually." + (st.pos ? " Your previously saved pin remains available; review it before sending." : "");
+          setDrawerLocationStatus(message);
+          showErrorMessage("locErr", message);
           return;
         }
         const accuracy = Math.round(best.acc);
@@ -1526,12 +1644,14 @@
           ? `GPS estimate is about ${accuracy} m. Retry outdoors or near a window for a better reading; you can also adjust the pin manually.`
           : `Device-reported accuracy is about ${accuracy} m. Check the pin at your business entrance.`;
         updateSelectedMapLocation(best.lat, best.lng, best.acc, 18, "GPS location", { source: "gps", fix: st.gpsFix, pinOffsetMeters: 0, pinMovedByHand: false });
+        setDrawerLocationStatus(`Your device pin is on the map · about ${accuracy} m reported accuracy. Drag it to adjust.`);
+        setLocationDrawerExpanded(false);
       };
       st.gpsTimer = setTimeout(() => finish(true), GPS_ACQUIRE_MS);
       st.gpsWatch = navigator.geolocation.watchPosition(p => {
         if (id !== st.gpsId) return;
         const { latitude: lat, longitude: lng, accuracy } = p.coords;
-        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(accuracy) || accuracy < 0 || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(accuracy) || accuracy <= 0 || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
         const fixTimestamp = Number.isFinite(p.timestamp) ? new Date(p.timestamp).toISOString() : null;
         const speedMps = Number.isFinite(p.coords.speed) && p.coords.speed >= 0 ? p.coords.speed : null;
         if (speedMps != null && (st.gpsMaxSpeedMps == null || speedMps > st.gpsMaxSpeedMps)) st.gpsMaxSpeedMps = speedMps;
@@ -1544,18 +1664,20 @@
       }, e => {
         if (id !== st.gpsId) return;
         if (st.gpsBest) { finish(); return; }
-        ++st.gpsId; stopGpsAcquisition(); st.gpsBest = null; st.gpsMaxSpeedMps = null; $("retry").disabled = false; $("locSt").textContent = "";
+        ++st.gpsId; stopGpsAcquisition(); st.gpsPending = false; setPinButtonBusy(false); st.gpsBest = null; st.gpsMaxSpeedMps = null; $("retry").disabled = false; $("locSt").textContent = ""; $("send").disabled = st.sent || !st.pos || !$("confirmShare").checked;
         const messages = {
           1: "Location permission was denied. Allow location in your browser settings and retry, or tap the map to place the pin.",
           2: "Your device could not determine a location. Check device location settings and try again, or place the pin manually.",
           3: "Location request timed out. Move outdoors, check location permission, then retry or place the pin on the map."
         };
-        showErrorMessage("locErr", messages[e.code] || "Location is unavailable. Check browser permission and device settings, then retry or place the pin manually.");
-      }, { enableHighAccuracy: true, timeout: GPS_ACQUIRE_MS, maximumAge: 0 });
+        const message = messages[e.code] || "Location is unavailable. Check browser permission and device settings, then retry or place the pin manually.";
+        setDrawerLocationStatus(message);
+        showErrorMessage("locErr", message);
+        }, { enableHighAccuracy: true, timeout: GPS_ACQUIRE_MS + 5000, maximumAge: 0 });
     }
     /* ---------- submission ---------- */
     async function submitLocationRequest() {
-      if (st.busy || st.sent || !st.pos) return;
+      if (st.busy || st.sent || st.gpsPending || !st.pos) return;
       if (!$("confirmShare").checked) { showErrorMessage("subErr", "Confirm the pin and sharing permission before sending."); return; }
       const btn = $("send"); setBusy(btn, true, "Inapotuma…"); showErrorMessage("subErr", "");
       $("submitProgress").hidden = false;
@@ -1628,19 +1750,25 @@
     $("supCall").onclick = callOffice;
     $("formGo").onclick = () => {
       if (!validateCustomerDetails()) return;
-      if (st.customerExisting && st.pos) {
-        updateSelectedMapLocation(st.pos.lat, st.pos.lng, st.pos.acc, 16, st.pos.place || "Saved business location", { source: st.pos.locationSource || "manual_pin", fixTimestamp: st.pos.fixTimestamp, pinOffsetMeters: st.pos.pinOffsetMeters, pinMovedByHand: st.pos.pinMovedByHand === true });
-        $("locSt").textContent = "Your saved pin is loaded. Check it or move it to the entrance.";
-        goStep("locate");
-      } else requestCurrentLocation();
+      openLocationStep();
     };
 
     $("accountEdit").onclick = () => showCustomerForm();
     $("accountSignOut").onclick = resetWorkflow;
     ["cn", "bn"].forEach(id => $(id).addEventListener("input", saveWorkflowDraft));
     $("publicListing").addEventListener("change", saveWorkflowDraft);
+    $("pinMyPoint").onclick = requestCurrentLocation;
     $("retry").onclick = requestCurrentLocation;
-    $("confirmShare").onchange = () => { $("send").disabled = st.sent || !st.pos || !$("confirmShare").checked; saveWorkflowDraft(); };
+    $("toggleLocationDrawer").onclick = () => setLocationDrawerExpanded(sheet.classList.contains("map-drawer-collapsed"));
+    $("confirmShare").onchange = () => { $("send").disabled = st.sent || st.gpsPending || !st.pos || !$("confirmShare").checked; saveWorkflowDraft(); };
+    $("toggleLocationSearch").onclick = () => {
+      const panel = $("locationSearchPanel"), button = $("toggleLocationSearch");
+      panel.hidden = !panel.hidden;
+      button.setAttribute("aria-expanded", String(!panel.hidden));
+      button.textContent = panel.hidden ? "Search for an area instead (optional)" : "Hide area search";
+      if (!panel.hidden) $("locationSearch").focus();
+      else { hidePlaceResults(); clearTimeout(placeSearchTimer); ++placeSearchSequence; placeSearchController?.abort(); }
+    };
     $("send").onclick = submitLocationRequest;
     $("editDetails").onclick = () => goStep("form");
     $("done").onclick = showCustomerLocationOnMap;
@@ -1652,8 +1780,8 @@
     document.addEventListener("keydown", e => {
       if (!$("sheet").classList.contains("open")) return;
       if (e.key === "Escape" && st.step !== "done" && !st.busy) { st.prev = st.step; goStep("stop") }
-      if (e.key === "Tab") { // keep focus inside dialog
-        const f = [...$("sheet").querySelectorAll(".step.on button:not(:disabled),.step.on input,.step.on a")];
+      if (e.key === "Tab" && st.step !== "locate") { // Keep modal steps contained; allow keyboard access to the location map.
+        const f = [...$("sheet").querySelectorAll(".step.on button:not(:disabled),.step.on input,.step.on a")].filter(el => el.getClientRects().length > 0);
         if (!f.length) return; const a = f[0], z = f[f.length - 1];
         if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus() }
         else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus() }

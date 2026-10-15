@@ -1477,7 +1477,7 @@ class StaffPermissionTests(TestCase):
             self.business.phone_hash, hash_value("provider-phone:" + self.business.phone)
         )
 
-    def test_staff_phone_change_rejects_phone_used_by_another_business(self):
+    def test_staff_phone_change_allows_shared_phone_and_only_rebinds_its_profile_key(self):
         other = CustomerBusiness.objects.create(
             public_ref="BU-OTHERPHONE",
             customer_name="Other Customer",
@@ -1486,6 +1486,24 @@ class StaffPermissionTests(TestCase):
         )
         BusinessLocation.objects.create(
             business=other, latitude=Decimal("-6.81"), longitude=Decimal("39.21")
+        )
+        own_key = ProviderCode.objects.create(
+            code_hash=hash_value("own-profile-phone-edit-key"),
+            target_phone_hash=hash_value("provider-phone:" + self.business.phone),
+            target_phone_last4=self.business.phone[-4:],
+            business=self.business,
+            legacy_phone_lookup=False,
+            expires_at=timezone.now() + timedelta(days=1),
+            reusable=True,
+        )
+        other_key = ProviderCode.objects.create(
+            code_hash=hash_value("other-profile-phone-edit-key"),
+            target_phone_hash=hash_value("provider-phone:" + other.phone),
+            target_phone_last4=other.phone[-4:],
+            business=other,
+            legacy_phone_lookup=False,
+            expires_at=timezone.now() + timedelta(days=1),
+            reusable=True,
         )
         group, _ = Group.objects.get_or_create(name="dispatcher")
         user = get_user_model().objects.create_user(
@@ -1500,7 +1518,12 @@ class StaffPermissionTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(response.data["error"]["code"], "phone_in_use")
+        self.assertEqual(response.status_code, 200)
         self.business.refresh_from_db()
-        self.assertEqual(self.business.phone, "+255712345678")
+        self.assertEqual(self.business.phone, other.phone)
+        own_key.refresh_from_db()
+        other_key.refresh_from_db()
+        self.assertEqual(own_key.target_phone_hash, hash_value("provider-phone:" + other.phone))
+        self.assertEqual(other_key.target_phone_hash, hash_value("provider-phone:" + other.phone))
+        self.assertEqual(own_key.business_id, self.business.pk)
+        self.assertEqual(other_key.business_id, other.pk)

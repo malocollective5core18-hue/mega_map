@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import io
 import math
+import uuid
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.parse import quote
 
@@ -216,6 +217,12 @@ def verify_code(request):
             status.HTTP_429_TOO_MANY_REQUESTS,
         )
     token = verify_provider_code(raw_code, phone, request=request)
+    if token == "ambiguous_business":
+        return error(
+            "ambiguous_legacy_key",
+            "This older key is not linked to one business. Contact the company for a separate key for this business.",
+            status.HTTP_409_CONFLICT,
+        )
     if token is None:
         return Response({"valid": False})
     session = VerificationSession.objects.get(token_hash=hashlib.sha256(token.encode()).hexdigest())
@@ -227,8 +234,7 @@ def verify_code(request):
     if session.provider_code.reusable:
         customer = (
             CustomerBusiness.objects.select_related("location", "consent")
-            .filter(phone=phone)
-            .order_by("-created_at")
+            .filter(pk=session.provider_code.business_id, phone=phone)
             .first()
         )
         if customer is not None:
@@ -341,7 +347,8 @@ def submit_location(request):
                     status.HTTP_410_GONE,
                 )
             data = serializer.validated_data
-            expected_phone_hash = session.provider_code.target_phone_hash
+            provider_code = ProviderCode.objects.select_for_update().get(pk=session.provider_code_id)
+            expected_phone_hash = provider_code.target_phone_hash
             if not expected_phone_hash or not hmac.compare_digest(
                 expected_phone_hash, hash_value("provider-phone:" + data["phone"])
             ):
@@ -349,6 +356,12 @@ def submit_location(request):
                     "phone_code_mismatch",
                     "Use the phone number associated with this service code.",
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+            if provider_code.business_id is not None:
+                return error(
+                    "customer_key_already_linked",
+                    "This key belongs to an existing business account. Sign in to update that account.",
+                    status.HTTP_409_CONFLICT,
                 )
             acquire_submission_locks(
                 phone=data["phone"], latitude=data["latitude"], longitude=data["longitude"]
@@ -359,7 +372,7 @@ def submit_location(request):
                 body = {
                     "error": {
                         "code": "duplicate",
-                        "message": "A request for this phone or location already exists.",
+                        "message": "A request for this location already exists.",
                     }
                 }
                 session.used_at = timezone.now()
@@ -369,6 +382,9 @@ def submit_location(request):
                 )
                 return Response(body, status=status.HTTP_409_CONFLICT)
             business = record_submission(data=data, request=request)
+            provider_code.business = business
+            provider_code.legacy_phone_lookup = False
+            provider_code.save(update_fields=["business", "legacy_phone_lookup"])
             body = {
                 "accepted": True,
                 "reference": business.public_ref,
@@ -477,8 +493,7 @@ def update_customer_profile(request):
                 )
             business = (
                 CustomerBusiness.objects.select_related("location", "consent")
-                .filter(phone=data["phone"])
-                .order_by("-created_at")
+                .filter(pk=session.provider_code.business_id, phone=data["phone"])
                 .first()
             )
             if business is None:
@@ -1117,8 +1132,14 @@ def location_confidence(location):
     return {"level": "low", "message": "Call the customer to confirm before travelling."}
 
 
-def phone_access(phone):
-    codes = ProviderCode.objects.filter(target_phone_hash=hash_value("provider-phone:" + phone))
+def phone_access(business):
+    codes = ProviderCode.objects.filter(business=business)
+    if not codes.exists() and CustomerBusiness.objects.filter(phone=business.phone).count() == 1:
+        codes = ProviderCode.objects.filter(
+            business__isnull=True,
+            legacy_phone_lookup=True,
+            target_phone_hash=hash_value("provider-phone:" + business.phone),
+        )
     code = (
         codes.filter(status=ProviderCode.Status.ACTIVE, expires_at__gt=timezone.now())
         .filter(Q(reusable=True) | Q(use_count__lt=F("max_uses")))
@@ -1149,7 +1170,7 @@ def serialize_staff_business(business, *, detail=False):
         "businessName": business.business_name,
         "customerName": business.customer_name,
         "phone": business.phone,
-        "accountAccess": phone_access(business.phone),
+        "accountAccess": phone_access(business),
         "status": business.status,
         "accuracyMeters": float(location.accuracy_m) if location.accuracy_m is not None else None,
         "locationSource": location.source,
@@ -1337,16 +1358,17 @@ def admin_business_detail(request, business_id):
                 latitude=business.location.latitude,
                 longitude=business.location.longitude,
             )
-            if CustomerBusiness.objects.filter(phone=business.phone).exclude(pk=business.pk).exists():
-                return error(
-                    "duplicate_phone",
-                    "Resolve other customer records using this phone before deletion; their keys cannot be safely separated.",
-                    status.HTTP_409_CONFLICT,
-                )
             phone_hash = hash_value("provider-phone:" + business.phone)
             code_ids = list(
                 ProviderCode.objects.select_for_update()
-                .filter(target_phone_hash=phone_hash)
+                .filter(
+                    Q(business=business)
+                    | Q(
+                        business__isnull=True,
+                        legacy_phone_lookup=True,
+                        target_phone_hash=phone_hash,
+                    )
+                )
                 .values_list("pk", flat=True)
             )
             now = timezone.now()
@@ -1379,6 +1401,7 @@ def admin_business_detail(request, business_id):
                 metadata={
                     "reference": business.public_ref,
                     "revoked_key_count": revoked_key_count,
+                    "keys_unlinked": len(code_ids),
                 },
             )
             business.delete()
@@ -1553,21 +1576,11 @@ def admin_business_detail(request, business_id):
                 latitude=locked_business.location.latitude,
                 longitude=locked_business.location.longitude,
             )
-            if (
-                CustomerBusiness.objects.filter(phone=business.phone)
-                .exclude(pk=business.pk)
-                .exists()
-            ):
-                return error(
-                    "phone_in_use",
-                    "That phone number is already assigned to another business.",
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
-                )
             old_phone_hash = hash_value("provider-phone:" + original_phone)
             new_phone_hash = hash_value("provider-phone:" + business.phone)
             codes = list(
                 ProviderCode.objects.select_for_update()
-                .filter(target_phone_hash=old_phone_hash)
+                .filter(business=locked_business, target_phone_hash=old_phone_hash)
                 .exclude(status=ProviderCode.Status.REVOKED)
             )
             for code in codes:
@@ -1575,6 +1588,46 @@ def admin_business_detail(request, business_id):
                 code.target_phone_last4 = business.phone[-4:]
             if codes:
                 ProviderCode.objects.bulk_update(codes, ["target_phone_hash", "target_phone_last4"])
+            legacy_codes = list(
+                ProviderCode.objects.select_for_update()
+                .filter(
+                    business__isnull=True,
+                    legacy_phone_lookup=True,
+                    target_phone_hash=old_phone_hash,
+                )
+                .exclude(status=ProviderCode.Status.REVOKED)
+            )
+            legacy_ids = [code.pk for code in legacy_codes]
+            legacy_keys_bound = 0
+            legacy_shared_phone = CustomerBusiness.objects.filter(phone=original_phone).exclude(
+                pk=locked_business.pk
+            ).exists()
+            if legacy_codes and not legacy_shared_phone:
+                for code in legacy_codes:
+                    code.business = locked_business
+                    code.legacy_phone_lookup = False
+                    code.target_phone_hash = new_phone_hash
+                    code.target_phone_last4 = business.phone[-4:]
+                ProviderCode.objects.bulk_update(
+                    legacy_codes,
+                    ["business", "legacy_phone_lookup", "target_phone_hash", "target_phone_last4"],
+                )
+                VerificationSession.objects.filter(
+                    provider_code_id__in=legacy_ids, used_at__isnull=True
+                ).update(used_at=timezone.now())
+                legacy_keys_bound = len(legacy_ids)
+                legacy_ids = []
+            elif legacy_ids:
+                revoked_at = timezone.now()
+                VerificationSession.objects.filter(
+                    provider_code_id__in=legacy_ids, used_at__isnull=True
+                ).update(used_at=revoked_at)
+                ProviderCode.objects.filter(pk__in=legacy_ids).update(
+                    status=ProviderCode.Status.REVOKED,
+                    revoked_at=revoked_at,
+                    target_phone_hash="",
+                    target_phone_last4="",
+                )
             locked_business.phone = business.phone
             locked_business.save(update_fields=["phone", "updated_at"])
             record_audit(
@@ -1583,7 +1636,11 @@ def admin_business_detail(request, business_id):
                 action="business.phone_changed",
                 object_type="CustomerBusiness",
                 object_id=business.pk,
-                metadata={"changed_fields": ["phone"]},
+                metadata={
+                    "changed_fields": ["phone"],
+                    "ambiguous_legacy_keys_revoked": len(legacy_ids),
+                    "legacy_keys_bound": legacy_keys_bound,
+                },
             )
         if "publicListing" in data:
             business.consent.public_listing = data["publicListing"]
@@ -1998,7 +2055,11 @@ def admin_provider_codes(request):
             )
         page_size = 50
         count = codes.count()
-        page_codes = list(codes.order_by("-created_at")[(page - 1) * page_size : page * page_size])
+        page_codes = list(
+            codes.select_related("business").order_by("-created_at")[
+                (page - 1) * page_size : page * page_size
+            ]
+        )
         target_hashes = {code.target_phone_hash for code in page_codes}
         linked_customers = {}
         if target_hashes:
@@ -2008,10 +2069,14 @@ def admin_provider_codes(request):
                 .only("phone_hash", "customer_name", "business_name", "phone")
                 .order_by("-created_at")
             )
+            grouped = {}
             for business in linked_rows:
                 phone_hash = hash_value("provider-phone:" + business.phone)
-                if phone_hash in target_hashes and phone_hash not in linked_customers:
-                    linked_customers[phone_hash] = business
+                if phone_hash in target_hashes:
+                    grouped.setdefault(phone_hash, []).append(business)
+            linked_customers = {
+                phone_hash: rows[0] for phone_hash, rows in grouped.items() if len(rows) == 1
+            }
         items = []
         for code in page_codes:
             if code.status == ProviderCode.Status.REVOKED:
@@ -2022,7 +2087,10 @@ def admin_provider_codes(request):
                 code_status = "used"
             else:
                 code_status = "active"
-            customer = linked_customers.get(code.target_phone_hash) if not is_provider else None
+            customer = (
+                code.business
+                or (linked_customers.get(code.target_phone_hash) if code.legacy_phone_lookup else None)
+            ) if not is_provider else None
             items.append(
                 {
                     "id": code.pk,
@@ -2033,6 +2101,10 @@ def admin_provider_codes(request):
                     "maxUses": code.max_uses,
                     "useCount": code.use_count,
                     "reusable": code.reusable,
+                    "businessId": str(code.business_id)
+                    if code.business_id
+                    and (not is_provider or code.created_by_id == request.user.pk)
+                    else None,
                     "customerName": customer.customer_name if customer else None,
                     "businessName": customer.business_name if customer else None,
                     "phone": customer.phone
@@ -2059,6 +2131,23 @@ def admin_provider_codes(request):
     except ValidationError:
         phone = ""
     label = request.data.get("label", "")
+    business_id = request.data.get("businessId")
+    business = None
+    if business_id:
+        try:
+            business_id = uuid.UUID(str(business_id))
+        except (ValueError, TypeError, AttributeError):
+            return error("invalid_business", "Choose a valid existing business.", 400)
+        may_link_business = request.user.is_superuser or has_role(request.user, "admin")
+        if is_provider:
+            may_link_business = ProviderCode.objects.filter(
+                business_id=business_id, created_by=request.user
+            ).exists()
+        if not may_link_business:
+            return error("not_allowed", "You cannot link a key to this business profile.", 403)
+        business = CustomerBusiness.objects.filter(pk=business_id).first()
+        if business is None or business.phone != phone:
+            return error("invalid_business", "Choose an existing business with this phone number.", 400)
     if (
         not phone
         or expires_at is None
@@ -2080,6 +2169,7 @@ def admin_provider_codes(request):
         label=label,
         created_by=request.user,
         reusable=True,
+        business=business,
     )
     record_audit(
         request=request,

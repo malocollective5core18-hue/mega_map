@@ -42,7 +42,7 @@ The system must make it clear that a phone GPS reading is an estimate. Search re
 
 The customer expects to:
 
-- Receive a reusable key from the company and sign in with the phone number linked to that key; a new phone can register after receiving a key.
+- Receive a reusable key for a specific business profile and sign in with that key and its linked phone; a new profile can be registered even when its phone is used by another business, with its own key.
 - Enter their name and business name without typing the verified phone again.
 - Get a useful location starting point from their device and search for a recognizable area, street, landmark, or bus stand.
 - Select a search suggestion, see the pin move, and then adjust the pin onto the actual business entrance.
@@ -72,7 +72,7 @@ The agent expects to:
 The superuser expects to:
 
 - Register admin assistants and service providers. Only the superuser can create staff accounts.
-- Manage registered customer records and issue phone-bound reusable customer keys with an expiry.
+- Manage registered customer records and issue reusable business-profile keys checked against the linked phone, with an expiry.
 - Review audit history and export customer data through authorized, audited actions.
 
 Admin assistants expect to manage customer records and review searchable key history. They cannot create staff accounts or issue customer keys.
@@ -94,7 +94,7 @@ The visitor expects to:
 
 1. Customer opens the public map and chooses **Share office/business location**.
 2. Customer enters the phone number associated with their reusable key and the key itself.
-3. Server verifies the pair and issues a short-lived session. If the phone has no customer record, the customer registers; otherwise the saved profile and location load for review/editing.
+3. Server verifies the pair and issues a short-lived session. If the key is linked to an existing business, that profile and location load for review/editing. A new-profile key starts a separate registration, even when another profile uses the same phone.
 4. A new customer enters their name and business name; the verified phone is displayed as read-only. Returning customers can edit their saved details.
 5. Customer confirms they are at the business and acquires a GPS estimate or places the pin manually.
 6. Customer may search a place name. Selecting a result moves the pin; it does not finish location confirmation.
@@ -132,7 +132,7 @@ Priorities: **M** = must-have for the next usable release; **S** = should-have; 
 
 | ID | Priority | Requirement | Baseline |
 |---|---|---|---|
-| CUS-01 | M | A customer shall be able to continue only when the entered phone and issued reusable key match. Invalid pairs should not reveal which part was wrong. A new phone can register after a provider issues its key; a known phone loads its existing profile. | Implemented for newly issued keys; legacy one-time keys remain registration-only |
+| CUS-01 | M | A customer shall be able to continue only when the entered phone and issued reusable key match. Invalid pairs should not reveal which part was wrong. A key linked to an existing profile loads only that profile; a new-profile key starts a separate profile even if the phone is already used elsewhere. | Implemented with profile-scoped reusable keys; ambiguous legacy shared-phone keys must be reissued |
 | CUS-02 | M | A valid key shall authorize a short-lived session for one registration or profile update, with a server-enforced expiry. The customer key itself remains reusable until expiry or revocation. | Current; default maximum is 30 minutes |
 | CUS-03 | M | Customer name, business name, verified phone, coordinates, consent, and confirmation shall be validated on the server. | Current |
 | CUS-04 | M | The verified phone shall be displayed read-only during the submission flow. | Current |
@@ -159,7 +159,7 @@ Priorities: **M** = must-have for the next usable release; **S** = should-have; 
 | STF-04 | M | The customer/details panel shall support drag/keyboard resizing so agents can choose more table or map space. | Current |
 | STF-05 | M | Registered customer rows shall expose location coordinates and a Copy location action. | Current |
 | STF-06 | M | Staff shall be able to edit permitted customer and dispatch details. | Current |
-| STF-07 | M | Service providers and the superuser shall issue reusable phone-bound customer keys; admin assistants may view key history but cannot issue keys. This is customer key sign-in, not a password account. | Implemented |
+| STF-07 | M | Service providers and the superuser shall issue reusable keys scoped to an individual business profile and checked against its phone; admin assistants may view key history but cannot issue keys. This is customer key sign-in, not a password account. | Implemented |
 | STF-08 | M | Staff detail shall provide coordinate-based navigation to Google Maps and available alternative map apps. | Current |
 | STF-09 | M | Staff shall see source/accuracy context and be advised to contact customers when location confidence is low. | Current |
 | STF-10 | M | Staff exact-data views, updates, pin corrections, exports, code issuance, and audit access shall be permission-checked and auditable. | Partially current; review audit coverage and role policy |
@@ -245,8 +245,7 @@ The next release is acceptable for a controlled pilot only when all M requiremen
 
 These are product decisions, not assumptions for an engineer to silently settle:
 
-1. **Account meaning:** Customer accounts use a reusable phone-bound key with a short-lived session; should a future phase add passwords or independent account recovery? Current system implements key-based access only.
-2. **Re-submission and renewal:** Can one phone manage multiple businesses/locations? Current profile lookup and update target the most recent record for that phone; new provider keys are reusable until expiry or revocation.
+1. **Account meaning:** Customer profiles use a reusable business-scoped key plus a short-lived session; a key is also checked against its profile phone. A separate business sharing a phone requires its own key. The system remains key-based, without customer passwords or independent recovery.
 3. **Code policy:** Default expiry, use count, renewal process, revoked-code behavior, and who may issue/revoke codes.
 4. **Staff roles:** Which roles may view exact phone/location, edit records, copy coordinates, export, issue codes, correct a pin, or view audit logs? Should only administrators see every customer?
 5. **Dispatch scope:** Is the next phase only customer registration and navigation, or must it assign named agents/teams, schedule visits, record outcomes, and restrict teams to assigned jobs?
