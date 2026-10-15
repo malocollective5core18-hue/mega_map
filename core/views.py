@@ -1217,12 +1217,20 @@ def admin_businesses(request):
         businesses = businesses.filter(status=status_filter)
     query = str(request.data.get("q", "")).strip()
     if query:
-        businesses = businesses.filter(
+        search_filter = (
             Q(public_ref__icontains=query)
             | Q(business_name__icontains=query)
             | Q(customer_name__icontains=query)
             | Q(phone__icontains=query)
         )
+        phone_digits = "".join(char for char in query if char.isdigit())
+        if phone_digits.startswith("00"):
+            phone_digits = phone_digits[2:]
+        if phone_digits.startswith("0"):
+            phone_digits = "255" + phone_digits[1:]
+        if phone_digits:
+            search_filter |= Q(phone__icontains=phone_digits)
+        businesses = businesses.filter(search_filter)
     bbox_arg = request.data.get("bbox")
     if bbox_arg:
         try:
