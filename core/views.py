@@ -1102,7 +1102,7 @@ def location_confidence(location):
         return {
             "level": "low",
             "message": (
-                "The pin was moved a long distance from its GPS estimate. "
+                "The pin offset from its GPS estimate is large. "
                 "Call the customer to confirm."
             ),
         }
