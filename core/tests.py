@@ -2059,6 +2059,17 @@ class DashboardListQueryCountTests(TestCase):
         self.assertLessEqual(len(queries), 12, f"The list ran {len(queries)} queries")
 
 
+class DeploymentDependencyConsistencyTests(TestCase):
+    def test_every_install_path_uses_the_locked_application_dependencies(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual((root / "requirements.txt").read_text().strip(), "-r requirements.lock")
+        self.assertIn("pip install -r requirements.lock", (root / "build.sh").read_text())
+        workflow = (root / ".github/workflows/ci.yml").read_text()
+        self.assertGreaterEqual(workflow.count("pip install -r requirements.lock"), 2)
+        self.assertIn("buildCommand: ./build.sh", (root / "render.yaml").read_text())
+
+
 class DiagnoseDashboardDataPrivacyTests(TestCase):
     def test_diagnostic_masks_database_and_customer_values_and_reports_render_sha(self):
         from io import StringIO
