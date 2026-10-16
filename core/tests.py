@@ -1807,3 +1807,27 @@ class DashboardListQueryCountTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data["items"]), 50)
         self.assertLessEqual(len(queries), 12, f"The list ran {len(queries)} queries")
+
+
+class DashboardErrorStateTests(TestCase):
+    def test_dashboard_explains_staff_roles_errors_and_csrf_failure(self):
+        from pathlib import Path
+
+        html = (
+            Path(__file__).resolve().parents[1] / "templates" / "staff" / "dashboard.html"
+        ).read_text()
+        for message in (
+            "Your two-step verification expired",
+            "Your staff role cannot see the customer inbox",
+            "The staff server is temporarily unavailable",
+            "The network could not load customer records",
+            "No jobs are assigned to your account",
+            "Keys awaiting customer submission",
+            "Last loaded",
+        ):
+            self.assertIn(message, html)
+        self.assertIn("Role {{ staff_role }} · MFA verified", html)
+        self.assertIn('id="sortOrder"', html)
+        self.assertNotIn(
+            ".catch(()=>{if(IS_PROVIDER)showView('codesView');else load()})", html
+        )
