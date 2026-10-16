@@ -644,6 +644,35 @@ class CustomerDuplicateRecoveryTests(TestCase):
         self.assertIsNotNone(session.used_at)
 
 
+class ProviderCodeAwaitingCountTests(TestCase):
+    def test_key_search_reports_unsubmitted_active_keys(self):
+        admin = get_user_model().objects.create_superuser(
+            username="awaiting-count-admin", email="awaiting-count@example.test",
+            password="safe-test-password",
+        )
+        codes = [
+            ProviderCode.objects.create(
+                code_hash=hash_value(f"AWAITING-{index}"),
+                target_phone_hash=hash_value(f"provider-phone:+25571234567{index}"),
+                expires_at=timezone.now() + timedelta(hours=1),
+                created_by=admin,
+                **extra,
+            )
+            for index, extra in enumerate(({}, {"business_id": None}))
+        ]
+        ProviderCode.objects.create(
+            code_hash=hash_value("AWAITING-EXPIRED"),
+            target_phone_hash=hash_value("provider-phone:+255712345679"),
+            expires_at=timezone.now() - timedelta(seconds=1),
+            created_by=admin,
+        )
+        client = APIClient()
+        client.force_authenticate(user=admin)
+        response = client.post("/api/admin/provider-codes", {"action": "search"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["awaitingSubmission"], len(codes))
+
+
 class CustomerSubmissionFailureLogTests(TestCase):
     def test_rejected_submission_logs_status_code_without_customer_payload(self):
         phone = "+255712345699"
