@@ -498,6 +498,76 @@ class LocationSignalValidationTests(TestCase):
         self.assertFalse(hasattr(location, "gps_longitude"))
 
 
+class CustomerDuplicateRecoveryTests(TestCase):
+    def test_duplicate_keeps_verification_session_for_corrected_retry(self):
+        phone = "+255712345650"
+        existing = CustomerBusiness.objects.create(
+            public_ref="BU-DUP-RECOVERY",
+            customer_name="Fake Customer",
+            business_name="Fake Shop",
+            phone=phone,
+        )
+        BusinessLocation.objects.create(
+            business=existing,
+            latitude=Decimal("-6.800000"),
+            longitude=Decimal("39.200000"),
+            source=BusinessLocation.Source.MANUAL,
+        )
+        code = "DUPERECOVERY1234"
+        provider_code = ProviderCode.objects.create(
+            code_hash=hash_value(code),
+            target_phone_hash=hash_value("provider-phone:" + phone),
+            expires_at=timezone.now() + timedelta(hours=1),
+            reusable=False,
+            legacy_phone_lookup=False,
+        )
+        client = APIClient()
+        verified = client.post(
+            "/api/provider-codes/verify", {"code": code, "phone": phone}, format="json"
+        )
+        self.assertEqual(verified.status_code, 200)
+        token = verified.data["verificationToken"]
+        payload = {
+            "customerName": "Fake Customer", "businessName": "Fake Shop", "phone": phone,
+            "latitude": -6.800010, "longitude": 39.200010, "accuracyMeters": None,
+            "locationSource": "manual_pin", "consent": True, "confirmed": True,
+            "publicListing": False,
+        }
+        duplicate = client.post(
+            "/api/location-submissions", payload, format="json",
+            HTTP_AUTHORIZATION="Bearer " + token,
+            HTTP_IDEMPOTENCY_KEY="duplicate-recovery-first-key",
+        )
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(duplicate.data["error"]["code"], "duplicate")
+        self.assertEqual(CustomerBusiness.objects.count(), 1)
+        session = VerificationSession.objects.get(provider_code=provider_code)
+        self.assertIsNone(session.used_at)
+        event = AuditLog.objects.get(action="customer.submission_rejected")
+        self.assertEqual(event.metadata, {"status": 409, "error_code": "duplicate"})
+        self.assertNotIn(phone, str(event.metadata))
+
+        payload["latitude"] = -6.801000
+        retry = client.post(
+            "/api/location-submissions", payload, format="json",
+            HTTP_AUTHORIZATION="Bearer " + token,
+            HTTP_IDEMPOTENCY_KEY="duplicate-recovery-second-key",
+        )
+        self.assertEqual(retry.status_code, 201, retry.data)
+        self.assertEqual(CustomerBusiness.objects.count(), 2)
+        session.refresh_from_db()
+        self.assertIsNotNone(session.used_at)
+
+
+class CustomerSubmissionMessageTests(TestCase):
+    def test_duplicate_is_a_conflict_and_never_a_success_screen(self):
+        from pathlib import Path
+        html = (Path(__file__).resolve().parents[1] / "index.html").read_text()
+        self.assertIn("This location is already on file.", html)
+        self.assertIn("nothing new was submitted", html.lower())
+        self.assertNotIn('showSuccessScreen(null, true, "already_on_file")', html)
+
+
 class DuplicateDetectionPolicyTests(TestCase):
     def setUp(self):
         self.business = CustomerBusiness.objects.create(
