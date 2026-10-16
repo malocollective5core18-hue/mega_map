@@ -367,7 +367,10 @@ def submit_location(request):
                 phone=data["phone"], latitude=data["latitude"], longitude=data["longitude"]
             )
             if find_duplicate(
-                phone=data["phone"], latitude=data["latitude"], longitude=data["longitude"]
+                phone=data["phone"],
+                business_name=data["businessName"],
+                latitude=data["latitude"],
+                longitude=data["longitude"],
             ):
                 body = {
                     "error": {
@@ -375,8 +378,13 @@ def submit_location(request):
                         "message": "A request for this location already exists.",
                     }
                 }
-                session.used_at = timezone.now()
-                session.save(update_fields=["used_at"])
+                record_audit(
+                    request=request,
+                    action="customer.submission_rejected",
+                    object_type="Submission",
+                    object_id="duplicate-location",
+                    metadata={"status": 409, "error_code": "duplicate"},
+                )
                 IdempotencyRecord.objects.create(
                     key_hash=key_hash, session=session, response_status=409, response_body=body
                 )

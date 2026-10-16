@@ -51,13 +51,26 @@ def rounded_public_coordinate(value):
     return float(Decimal(value).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP))
 
 
-def find_duplicate(*, phone, latitude, longitude):
+def find_duplicate(*, phone, business_name, latitude, longitude):
+    """Reject a nearby repeat of the same business identity, not a neighbor's shop."""
+    radius_m = max(0, int(settings.LOCATION_DUPLICATE_RADIUS_M))
+    if radius_m == 0:
+        return False
     lat = float(latitude)
     lng = float(longitude)
-    lat_delta = 30 / 111_320
+    lat_delta = radius_m / 111_320
     cos_lat = max(0.01, abs(math.cos(math.radians(lat))))
-    lng_delta = min(180.0, 30 / (111_320 * cos_lat))
+    lng_delta = min(180.0, radius_m / (111_320 * cos_lat))
+    eligible_statuses = (
+        CustomerBusiness.Status.SUBMITTED,
+        CustomerBusiness.Status.REVIEWED,
+        CustomerBusiness.Status.SCHEDULED,
+        CustomerBusiness.Status.SERVED,
+    )
     candidates = BusinessLocation.objects.filter(
+        business__phone_hash=hash_value("provider-phone:" + phone),
+        business__business_name__iexact=str(business_name).strip(),
+        business__status__in=eligible_statuses,
         latitude__gte=Decimal(str(lat - lat_delta)),
         latitude__lte=Decimal(str(lat + lat_delta)),
         longitude__gte=Decimal(str(lng - lng_delta)),
