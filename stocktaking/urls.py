@@ -47,6 +47,22 @@ def staff_home(request):
             name__in=["dispatcher", "admin", "service_provider", "field_team"]
         ).exists()
     ):
+        if request.user.is_superuser:
+            staff_role = "Superuser"
+        else:
+            staff_role = next(
+                (
+                    label
+                    for name, label in (
+                        ("admin", "Admin assistant"),
+                        ("dispatcher", "Dispatcher"),
+                        ("service_provider", "Service provider"),
+                        ("field_team", "Field team"),
+                    )
+                    if request.user.groups.filter(name=name).exists()
+                ),
+                "Staff",
+            )
         return render(
             request,
             "staff/dashboard.html",
@@ -62,6 +78,7 @@ def staff_home(request):
                     settings.MFA_RECOVERY_OWNER_EMAIL
                     and request.user.email.strip().lower() == settings.MFA_RECOVERY_OWNER_EMAIL
                 ),
+                "staff_role": staff_role,
             },
         )
     return render(request, "staff/login.html")
