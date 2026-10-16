@@ -13,7 +13,7 @@ from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, transaction
-from django.db.models import F, Q
+from django.db.models import Count, F, Prefetch, Q
 from django.http import HttpResponse
 from django.middleware.csrf import CsrfViewMiddleware, get_token
 from django.utils import timezone
@@ -615,7 +615,9 @@ def staff_required(request, *, admin=False):
             metadata={"reason": "role_required"},
         )
         return error(
-            "not_allowed", "This action is limited to administrators.", status.HTTP_403_FORBIDDEN
+            "admin_role_required",
+            "This action is limited to administrators.",
+            status.HTTP_403_FORBIDDEN,
         )
     if not role and not (
         has_role(request.user, "dispatcher")
@@ -630,7 +632,9 @@ def staff_required(request, *, admin=False):
             object_id=request.path,
             metadata={"reason": "staff_role_required"},
         )
-        return error("not_allowed", "This action is limited to staff.", status.HTTP_403_FORBIDDEN)
+        return error(
+            "staff_role_required", "This action is limited to staff.", status.HTTP_403_FORBIDDEN
+        )
     return None
 
 
@@ -1132,23 +1136,42 @@ def location_confidence(location):
     return {"level": "low", "message": "Call the customer to confirm before travelling."}
 
 
-def phone_access(business):
-    codes = ProviderCode.objects.filter(business=business)
-    if not codes.exists() and CustomerBusiness.objects.filter(phone=business.phone).count() == 1:
-        codes = ProviderCode.objects.filter(
-            business__isnull=True,
-            legacy_phone_lookup=True,
-            target_phone_hash=hash_value("provider-phone:" + business.phone),
+def phone_access(business, *, codes=None, phone_count=None, legacy_codes=None):
+    if codes is None:
+        codes = ProviderCode.objects.filter(business=business)
+        if not codes.exists() and CustomerBusiness.objects.filter(phone=business.phone).count() == 1:
+            codes = ProviderCode.objects.filter(
+                business__isnull=True,
+                legacy_phone_lookup=True,
+                target_phone_hash=hash_value("provider-phone:" + business.phone),
+            )
+    else:
+        codes = list(codes)
+        if not codes and phone_count == 1:
+            codes = list(legacy_codes or [])
+    now = timezone.now()
+    if isinstance(codes, list):
+        active_codes = [
+            code
+            for code in codes
+            if code.status == ProviderCode.Status.ACTIVE
+            and code.expires_at > now
+            and (code.reusable or code.use_count < code.max_uses)
+        ]
+        code = active_codes[0] if active_codes else None
+    else:
+        code = (
+            codes.filter(status=ProviderCode.Status.ACTIVE, expires_at__gt=now)
+            .filter(Q(reusable=True) | Q(use_count__lt=F("max_uses")))
+            .order_by("-created_at")
+            .first()
         )
-    code = (
-        codes.filter(status=ProviderCode.Status.ACTIVE, expires_at__gt=timezone.now())
-        .filter(Q(reusable=True) | Q(use_count__lt=F("max_uses")))
-        .order_by("-created_at")
-        .first()
-    )
     if code is not None:
         return {"status": "active", "expiresAt": code.expires_at.isoformat()}
-    code = codes.order_by("-created_at").first()
+    if isinstance(codes, list):
+        code = codes[0] if codes else None
+    else:
+        code = codes.order_by("-created_at").first()
     if code is None:
         return {"status": "not_issued", "expiresAt": None}
     if code.status == ProviderCode.Status.REVOKED:
@@ -1162,7 +1185,9 @@ def phone_access(business):
     return {"status": state, "expiresAt": code.expires_at.isoformat()}
 
 
-def serialize_staff_business(business, *, detail=False):
+def serialize_staff_business(
+    business, *, detail=False, provider_codes=None, phone_count=None, legacy_codes=None
+):
     location = business.location
     result = {
         "id": str(business.pk),
@@ -1170,7 +1195,9 @@ def serialize_staff_business(business, *, detail=False):
         "businessName": business.business_name,
         "customerName": business.customer_name,
         "phone": business.phone,
-        "accountAccess": phone_access(business),
+        "accountAccess": phone_access(
+            business, codes=provider_codes, phone_count=phone_count, legacy_codes=legacy_codes
+        ),
         "status": business.status,
         "accuracyMeters": float(location.accuracy_m) if location.accuracy_m is not None else None,
         "locationSource": location.source,
@@ -1186,6 +1213,7 @@ def serialize_staff_business(business, *, detail=False):
         "teamVerified": location.team_verified,
         "publicListing": business.consent.public_listing,
         "createdAt": business.created_at.isoformat(),
+        "updatedAt": business.updated_at.isoformat(),
         "assignedTo": business.assigned_to_id,
     }
     if detail:
@@ -1263,8 +1291,17 @@ def admin_businesses(request):
         page = max(1, int(request.data.get("page", "1")))
     except ValueError:
         return error("invalid_page", "Page must be a whole number.", status.HTTP_400_BAD_REQUEST)
+    sort_order = str(request.data.get("sort", "recently_updated"))
+    ordering = {
+        "recently_updated": ("-updated_at", "-pk"),
+        "newest_created": ("-created_at", "-pk"),
+    }.get(sort_order)
+    if ordering is None:
+        return error("invalid_sort", "Choose a supported customer order.", status.HTTP_400_BAD_REQUEST)
     page_size = 50
     count = businesses.count()
+    pages = max(1, math.ceil(count / page_size))
+    page = min(page, pages)
     record_audit(
         request=request,
         actor=request.user,
@@ -1272,9 +1309,61 @@ def admin_businesses(request):
         object_type="CustomerBusiness",
         object_id="",
     )
-    rows = businesses.order_by("-created_at")[(page - 1) * page_size : page * page_size]
+    rows = list(
+        businesses.prefetch_related(
+            Prefetch(
+                "provider_codes",
+                queryset=ProviderCode.objects.order_by("-created_at"),
+                to_attr="staff_provider_codes",
+            )
+        )
+        .order_by(*ordering)[(page - 1) * page_size : page * page_size]
+    )
+    phones = {row.phone for row in rows}
+    phone_counts = {
+        phone: total
+        for phone, total in CustomerBusiness.objects.filter(phone__in=phones)
+        .values_list("phone")
+        .annotate(total=Count("pk"))
+    }
+    phone_hashes = {hash_value("provider-phone:" + phone) for phone in phones}
+    legacy_codes_by_hash = {}
+    if phone_hashes:
+        for code in ProviderCode.objects.filter(
+            business__isnull=True,
+            legacy_phone_lookup=True,
+            target_phone_hash__in=phone_hashes,
+        ).order_by("-created_at"):
+            legacy_codes_by_hash.setdefault(code.target_phone_hash, []).append(code)
+    awaiting_submission = None
+    if not has_role(request.user, "field_team") or request.user.is_superuser:
+        awaiting_submission = (
+            ProviderCode.objects.filter(
+                business__isnull=True,
+                status=ProviderCode.Status.ACTIVE,
+                expires_at__gt=timezone.now(),
+            )
+            .filter(Q(reusable=True) | Q(use_count__lt=F("max_uses")))
+            .count()
+        )
     return Response(
-        {"count": count, "page": page, "items": [serialize_staff_business(row) for row in rows]}
+        {
+            "count": count,
+            "page": page,
+            "pages": pages,
+            "awaitingSubmission": awaiting_submission,
+            "items": [
+                serialize_staff_business(
+                    row,
+                    provider_codes=row.staff_provider_codes,
+                    phone_count=phone_counts.get(row.phone, 0),
+                    legacy_codes=legacy_codes_by_hash.get(
+                        hash_value("provider-phone:" + row.phone), []
+                    ),
+                )
+                for row in rows
+            ],
+        }
     )
 
 
