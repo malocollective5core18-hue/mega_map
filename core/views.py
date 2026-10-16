@@ -1443,7 +1443,7 @@ def admin_business_detail(request, business_id):
     if request.method == "DELETE":
         with transaction.atomic():
             business = (
-                CustomerBusiness.objects.select_for_update()
+                CustomerBusiness.objects.select_for_update(of=("self",))
                 .select_related("location")
                 .filter(pk=business_id)
                 .first()
