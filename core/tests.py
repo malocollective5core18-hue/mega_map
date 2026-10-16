@@ -1707,3 +1707,51 @@ class DashboardCustomerDataFlowTests(TestCase):
             else:
                 self.assertEqual(response.status_code, 403, label)
                 self.assertEqual(detail.status_code, 403, label)
+
+
+class DashboardListQueryCountTests(TestCase):
+    def test_customer_list_query_count_stays_bounded_for_fifty_rows(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        businesses = [
+            CustomerBusiness(
+                public_ref=f"BU-QUERY-{index:03d}",
+                customer_name=f"Query Customer {index}",
+                business_name=f"Query Shop {index}",
+                phone=f"+25575555{index:04d}",
+            )
+            for index in range(50)
+        ]
+        CustomerBusiness.objects.bulk_create(businesses)
+        BusinessLocation.objects.bulk_create(
+            [
+                BusinessLocation(
+                    business=business,
+                    latitude=Decimal("-6.8"),
+                    longitude=Decimal("39.2"),
+                )
+                for business in businesses
+            ]
+        )
+        Consent.objects.bulk_create(
+            [
+                Consent(
+                    business=business,
+                    privacy_notice_version="test",
+                    location_processing=True,
+                )
+                for business in businesses
+            ]
+        )
+        user = get_user_model().objects.create_user(username="query-dispatcher")
+        user.groups.add(Group.objects.get_or_create(name="dispatcher")[0])
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        with CaptureQueriesContext(connection) as queries:
+            response = client.post("/api/admin/businesses", {}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["items"]), 50)
+        self.assertLessEqual(len(queries), 12, f"The list ran {len(queries)} queries")
