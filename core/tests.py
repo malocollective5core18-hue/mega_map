@@ -559,6 +559,25 @@ class CustomerDuplicateRecoveryTests(TestCase):
         self.assertIsNotNone(session.used_at)
 
 
+class CustomerSubmissionFailureLogTests(TestCase):
+    def test_rejected_submission_logs_status_code_without_customer_payload(self):
+        phone = "+255712345699"
+        with self.assertLogs("core.customer_submission", level="WARNING") as captured:
+            response = APIClient().post(
+                "/api/location-submissions",
+                {"phone": phone, "customerName": "Fake Person", "latitude": -6.8},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 422)
+        line = " ".join(captured.output)
+        self.assertIn("status=422", line)
+        self.assertIn("error_code=invalid_submission", line)
+        self.assertIn("reference=unassigned", line)
+        self.assertNotIn(phone, line)
+        self.assertNotIn("Fake Person", line)
+        self.assertNotIn("-6.8", line)
+
+
 class CustomerSubmissionMessageTests(TestCase):
     def test_duplicate_is_a_conflict_and_never_a_success_screen(self):
         from pathlib import Path
