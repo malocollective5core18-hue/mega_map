@@ -2150,8 +2150,18 @@ def admin_provider_codes(request):
             return error(
                 "invalid_page", "Page must be a whole number.", status.HTTP_400_BAD_REQUEST
             )
+        awaiting_codes = ProviderCode.objects.filter(
+            business__isnull=True,
+            status=ProviderCode.Status.ACTIVE,
+            expires_at__gt=now,
+        ).filter(Q(reusable=True) | Q(use_count__lt=F("max_uses")))
+        if is_provider:
+            awaiting_codes = awaiting_codes.filter(created_by=request.user)
+        awaiting_submission = awaiting_codes.count()
         page_size = 50
         count = codes.count()
+        pages = max(1, math.ceil(count / page_size))
+        page = min(page, pages)
         page_codes = list(
             codes.select_related("business").order_by("-created_at")[
                 (page - 1) * page_size : page * page_size
@@ -2220,7 +2230,9 @@ def admin_provider_codes(request):
             object_type="ProviderCode",
             object_id="",
         )
-        return Response({"count": count, "page": page, "items": items})
+        return Response(
+            {"count": count, "page": page, "pages": pages, "awaitingSubmission": awaiting_submission, "items": items}
+        )
     expires_at = parse_datetime(str(request.data.get("expiresAt", "")))
     raw_phone = request.data.get("phone", "")
     try:
