@@ -2212,6 +2212,9 @@ def admin_provider_codes(request):
                     if code.business_id
                     and (not is_provider or code.created_by_id == request.user.pk)
                     else None,
+                    "needsResolution": bool(
+                        not is_provider and code.business_id is None and code.legacy_phone_lookup
+                    ),
                     "customerName": customer.customer_name if customer else None,
                     "businessName": customer.business_name if customer else None,
                     "phone": customer.phone
