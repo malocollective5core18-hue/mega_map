@@ -508,12 +508,21 @@ class LegacyKeyResolutionTests(TestCase):
             )
             for index in (1, 2)
         ]
+        for business in self.businesses:
+            BusinessLocation.objects.create(
+                business=business, latitude=Decimal("-6.8"), longitude=Decimal("39.2"),
+                source=BusinessLocation.Source.MANUAL,
+            )
+            Consent.objects.create(
+                business=business, privacy_notice_version="test", location_processing=True
+            )
         self.raw_key = "LEGACYRESOLVE1234"
         self.code = ProviderCode.objects.create(
             code_hash=hash_value(self.raw_key),
             target_phone_hash=hash_value("provider-phone:" + self.phone),
             target_phone_last4=self.phone[-4:],
             legacy_phone_lookup=True,
+            reusable=True,
             expires_at=timezone.now() + timedelta(hours=1),
         )
 

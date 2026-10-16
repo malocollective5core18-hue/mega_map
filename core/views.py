@@ -2289,6 +2289,52 @@ def admin_provider_codes(request):
 
 @api_view(["POST"])
 @permission_classes([AuditIsAuthenticated])
+def admin_link_legacy_code(request, code_id):
+    denied = staff_required(request, admin=True)
+    if denied:
+        return denied
+    try:
+        business_id = uuid.UUID(str(request.data.get("businessId", "")))
+    except (ValueError, TypeError, AttributeError):
+        return error("invalid_business", "Choose a valid business profile.", 400)
+
+    with transaction.atomic():
+        code = ProviderCode.objects.select_for_update().filter(pk=code_id).first()
+        if code is None:
+            return error("not_found", "Customer key not found.", 404)
+        if code.business_id is not None or not code.legacy_phone_lookup:
+            return error(
+                "legacy_key_already_resolved",
+                "This key is already linked or is not an unresolved legacy key.",
+                409,
+            )
+        if not code.accepts():
+            return error("legacy_key_inactive", "Only an active key can be linked.", 409)
+        business = CustomerBusiness.objects.filter(pk=business_id).first()
+        if business is None or not hmac.compare_digest(
+            code.target_phone_hash, hash_value("provider-phone:" + business.phone)
+        ):
+            return error(
+                "legacy_key_phone_mismatch",
+                "The selected business does not match this key’s phone number.",
+                400,
+            )
+        code.business = business
+        code.legacy_phone_lookup = False
+        code.save(update_fields=["business", "legacy_phone_lookup"])
+        record_audit(
+            request=request,
+            actor=request.user,
+            action="provider_code.legacy_linked",
+            object_type="ProviderCode",
+            object_id=code.pk,
+            metadata={"business_id": str(business.pk)},
+        )
+    return Response({"linked": True, "businessId": str(business.pk), "reference": business.public_ref})
+
+
+@api_view(["POST"])
+@permission_classes([AuditIsAuthenticated])
 def admin_revoke_code(request, code_id):
     is_owner_provider = (
         request.user.groups.filter(name="service_provider").exists()

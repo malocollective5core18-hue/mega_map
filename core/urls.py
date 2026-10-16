@@ -53,6 +53,11 @@ urlpatterns = [
     path("admin/export.csv", views.admin_export, name="admin-export"),
     path("admin/provider-codes", views.admin_provider_codes, name="admin-provider-codes"),
     path(
+        "admin/provider-codes/<int:code_id>/link",
+        views.admin_link_legacy_code,
+        name="admin-provider-code-link",
+    ),
+    path(
         "admin/provider-codes/<int:code_id>/revoke",
         views.admin_revoke_code,
         name="admin-provider-code-revoke",
