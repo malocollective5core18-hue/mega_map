@@ -38,6 +38,7 @@ MIDDLEWARE = [
     "core.middleware.ContentSecurityPolicyReportOnlyMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "core.middleware.PrivateStaffNoStoreMiddleware",
+    "core.middleware.CustomerSubmissionFailureLogMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

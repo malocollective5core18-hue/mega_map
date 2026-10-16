@@ -1,3 +1,5 @@
+import logging
+
 from django.http import HttpResponseRedirect, JsonResponse
 
 from .mfa import is_mfa_verified
@@ -27,6 +29,30 @@ class PrivateStaffNoStoreMiddleware:
             response["Pragma"] = "no-cache"
         if is_noindex:
             response["X-Robots-Tag"] = "noindex, nofollow"
+        return response
+
+
+class CustomerSubmissionFailureLogMiddleware:
+    """Log failed customer writes without recording submitted personal data."""
+
+    PATHS = {"/api/location-submissions", "/api/customer/profile"}
+    logger = logging.getLogger("core.customer_submission")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.method in {"POST", "PUT"} and request.path in self.PATHS and response.status_code >= 400:
+            data = getattr(response, "data", None)
+            error = data.get("error", {}) if isinstance(data, dict) else {}
+            error_code = str(error.get("code", "request_failed"))[:64]
+            self.logger.warning(
+                "customer_submission_rejected status=%s error_code=%s reference=%s",
+                response.status_code,
+                error_code,
+                "unassigned",
+            )
         return response
 
 
