@@ -1560,7 +1560,7 @@ def admin_business_detail(request, business_id):
     with transaction.atomic():
         if business.phone != original_phone:
             locked_business = (
-                CustomerBusiness.objects.select_for_update()
+                CustomerBusiness.objects.select_for_update(of=("self",))
                 .select_related("location")
                 .get(pk=business.pk)
             )

@@ -1436,7 +1436,14 @@ class StaffPermissionTests(TestCase):
         event = AuditLog.objects.get(
             action="business.phone_changed", object_id=str(self.business.pk)
         )
-        self.assertEqual(event.metadata, {"changed_fields": ["phone"]})
+        self.assertEqual(
+            event.metadata,
+            {
+                "changed_fields": ["phone"],
+                "ambiguous_legacy_keys_revoked": 0,
+                "legacy_keys_bound": 1,
+            },
+        )
         old_login = APIClient().post(
             "/api/provider-codes/verify", {"phone": old_phone, "code": raw_key}, format="json"
         )
