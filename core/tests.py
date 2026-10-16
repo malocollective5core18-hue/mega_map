@@ -1643,6 +1643,57 @@ class DashboardCustomerDataFlowTests(TestCase):
         self.assertEqual(CustomerBusiness.objects.count(), 1)
         assert_staff_location(-6.814444, "Updated Flow Shop")
 
+    def test_recent_update_order_is_default_created_order_is_optional_and_pages_clamp(self):
+        older = CustomerBusiness.objects.create(
+            public_ref="BU-ORDER-OLD",
+            customer_name="Older Customer",
+            business_name="Older Shop",
+            phone="+255755555561",
+            created_at=timezone.now() - timedelta(days=10),
+        )
+        newer = CustomerBusiness.objects.create(
+            public_ref="BU-ORDER-NEW",
+            customer_name="Newer Customer",
+            business_name="Newer Shop",
+            phone="+255755555562",
+            created_at=timezone.now() - timedelta(days=1),
+        )
+        for business in (older, newer):
+            BusinessLocation.objects.create(
+                business=business,
+                latitude=Decimal("-6.8"),
+                longitude=Decimal("39.2"),
+            )
+            Consent.objects.create(
+                business=business,
+                privacy_notice_version="test",
+                location_processing=True,
+            )
+        older.updated_at = timezone.now()
+        older.save(update_fields=["updated_at"])
+        group, _ = Group.objects.get_or_create(name="dispatcher")
+        user = get_user_model().objects.create_user(username="order-dispatcher")
+        user.groups.add(group)
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        recent = client.post("/api/admin/businesses", {}, format="json")
+        created = client.post(
+            "/api/admin/businesses", {"sort": "newest_created"}, format="json"
+        )
+        clamped = client.post(
+            "/api/admin/businesses", {"page": 500}, format="json"
+        )
+
+        self.assertEqual(recent.status_code, 200)
+        self.assertEqual(recent.data["items"][0]["id"], str(older.pk))
+        self.assertIn("updatedAt", recent.data["items"][0])
+        self.assertEqual(created.data["items"][0]["id"], str(newer.pk))
+        self.assertEqual(clamped.data["count"], 2)
+        self.assertEqual(clamped.data["pages"], 1)
+        self.assertEqual(clamped.data["page"], 1)
+        self.assertEqual(len(clamped.data["items"]), 2)
+
     def test_staff_list_and_detail_distinguish_mfa_and_role_scope(self):
         business = CustomerBusiness.objects.create(
             public_ref="BU-MATRIX-FLOW",
@@ -1706,6 +1757,7 @@ class DashboardCustomerDataFlowTests(TestCase):
                 self.assertEqual(detail.status_code, 404, label)
             else:
                 self.assertEqual(response.status_code, 403, label)
+                self.assertEqual(response.data["error"]["code"], "staff_role_required", label)
                 self.assertEqual(detail.status_code, 403, label)
 
 
