@@ -1,5 +1,42 @@
 # Release Readiness
 
+## Mission 11 dashboard release verification — 16 October 2026
+
+**Status: NOT READY FOR STAGING VERIFICATION.** Local branch `release/dashboard-data-flow` was created from `fix/dashboard-data-flow`. The mandatory fresh locked install could not resolve PyPI DNS, so the Mission 11 test-first duplicate-radius fix was not attempted. No live service, customer data, push, PR, merge, or deployment was accessed/performed.
+
+| Gate | Status | Evidence / remaining action |
+|---|---|---|
+| Render deployed branch/SHA and root cause | Not verified | Owner must provide deploy SHA, masked before/after diagnostic output, staff role/MFA, list status/error code, and customer request statuses. |
+| Fresh locked install | Fail / blocked | `/tmp/m11-venv` created; `pip install -r requirements.lock` failed DNS for `/simple/asgiref/`. Local wheel cache had no project dependencies. |
+| PostgreSQL, Django checks, full suite, migration round-trip, 20 concurrency runs | Not tested | Stopped after mandatory dependency gate; PostgreSQL was not started for this run. |
+| Duplicate-radius defect | Confirmed source defect; open | Candidate bounds use the setting, but final distance cutoff and advisory lock cell size are hard-coded to 30 m. No failing repro ran; no fix made. |
+| Browser/Playwright and screenshot evidence | Not tested | npm DNS unavailable; no browser suite or screenshot output. |
+| Full authorization endpoint × role × MFA matrix | Not tested | Existing tests cover selected pairs only. |
+| `pip-audit`, Ruff, full-history Gitleaks | Not tested | Tools/results unavailable; no current pass is claimed. |
+| Frontend syntax and whitespace | Pass | Current frontend syntax checker checked five inline scripts; `git diff --check` passed. |
+| Dependency path alignment | Pass in source | `render.yaml`, `build.sh`, `requirements.txt`, `requirements.lock`, and CI references are aligned. Live dashboard overrides remain unknown. |
+
+Mission 7 release blockers remain open: MFA enforcement proof, CSP enforcement, Supabase backup/restore, privacy/legal approval, and real-device GPS tests. Mission 6 owner decisions also remain open: service boundary, 50 m warning, manual-pin policy, large-offset policy, and field-team rights. See [DASHBOARD-RELEASE-REPORT.md](DASHBOARD-RELEASE-REPORT.md).
+
+## Mission 10 dashboard data-flow update — 16 October 2026
+
+**Status: NOT PRODUCTION-READY.** Work is on local branch `fix/dashboard-data-flow`, based on `diagnose/dashboard-data-flow` at `26282cd` because Render's deployed SHA is unknown. No live systems, customer data, deployment, merge, or push were accessed/performed.
+
+| Gate | Status | Evidence / remaining action |
+|---|---|---|
+| Live incident root cause | Not verified | Need deployed branch/SHA plus redacted status and `error.code` from `POST /api/admin/businesses` after MFA. |
+| Dashboard error/role/MFA explanations | Pass in source and tests | Separate visible states, role/MFA header, explicit CSRF failure, provider and unassigned field-team messages. |
+| Customer update ordering and list scaling | Pass in source and prior PostgreSQL test | Updated-first sort, stable tie-breaker, paging clamp, last-loaded UI, bounded query count test. |
+| Customer submission duplicate recovery | Pass in source and focused tests | Duplicate is not a success, session remains usable, rejection audit has no customer data. |
+| Duplicate policy setting | Fail / open defect | Candidate bounds use configured radius, but final distance cutoff and advisory-lock cells still use literal 30 m. Fix and run regression before release. |
+| Legacy key resolution | Pass in source and focused tests | Admin-only explicit relink by public reference, phone match, and audit. |
+| Dependency lock alignment | Pass in source | `build.sh`, CI, requirements wrapper and lock are aligned; the current resume could not reinstall due PyPI DNS. |
+| PostgreSQL suite and 20 concurrency repeats | Pass (prior Mission 10 run; current rerun Not tested) | 89/0 skipped, 20/20 concurrency repeats, migrations round-trip. Temporary env was removed; cannot rerun under current DNS state. |
+| pip-audit, Ruff, Gitleaks | Not tested in current resume | Do not rely on historical Mission 5 tool results for the current branch. |
+| Playwright, live smoke, Render provenance | Not tested | No GitHub/Render access or browser test account. |
+
+Open decisions remain unchanged: service boundary, 50 m accuracy warning, manual-pin policy, large-offset policy, and field-team rights. MFA enforcement proof, CSP enforcement, Supabase backup/restore, privacy/legal approval and real-device GPS tests remain open. See [DASHBOARD-FIX-REPORT.md](DASHBOARD-FIX-REPORT.md) and [../TEST-REPORT.md](../TEST-REPORT.md).
+
 ## Mission 8 link preview update — 15 October 2026
 
 **Status: NOT PRODUCTION-READY.** Link preview metadata and static crawler assets are implemented on `feature/link-preview`. No merge or deployment was performed. The Render host could not resolve from this environment; live crawler and phone-preview behavior is unverified.

@@ -1,5 +1,46 @@
 # Test report
 
+## Mission 11 verification — 16 October 2026
+
+**Branch:** `release/dashboard-data-flow`, created from local `fix/dashboard-data-flow`. No live services or customer data were accessed. Nothing was pushed, opened as a PR, merged, or deployed.
+
+| Check | Result | Evidence |
+|---|---|---|
+| PyPI/npm/GitHub DNS | Fail / unavailable | `getent ahosts` returned no addresses for pypi.org, registry.npmjs.org, or github.com. |
+| Fresh venv and locked install | Fail / blocked | Created `/tmp/m11-venv`; `pip install -r requirements.lock` failed resolving `/simple/asgiref/`. Checked available wheel files; only unrelated cloudinary/django-tenants wheels were present. |
+| Exact installed locked versions | Not tested | The install did not complete. |
+| PostgreSQL | Not tested | `pg_isready -p 55432` returned no response. No cluster was initialized. |
+| Django checks/full suite/migrations/concurrency 20x | Not tested | Stopped at required environment gate; `.local-deps` cannot import current settings because `dj_database_url` is missing. |
+| Duplicate-radius reproduction/fix | Not tested | Source confirms hard-coded 30 m distance comparison and lock grid; no regression or fix was run. |
+| Playwright/browser scenarios/screenshots | Not tested | No installed Playwright suite; npm registry DNS unavailable. |
+| Authorization matrix | Not tested | Full endpoint × method × role × MFA table-driven matrix is absent; existing tests cover selected combinations only. |
+| pip-audit/Ruff/Gitleaks | Not tested | Tools unavailable; no scan result claimed. |
+| Frontend syntax | Pass | `python3 scripts/check_frontend_js.py`: five inline blocks checked. |
+| Python compile / whitespace | Pass | Python compilation for core services/views/middleware/diagnostic command/URLs passed; `git diff --check` passed. |
+
+See [DASHBOARD-RELEASE-REPORT.md](RELEASE/DASHBOARD-RELEASE-REPORT.md) for detailed blocked gates and owner steps.
+
+## Mission 10 dashboard data-flow run — 16 October 2026
+
+**Branch:** `fix/dashboard-data-flow`, based on local `diagnose/dashboard-data-flow` at `26282cd` because the deployed Render SHA was not supplied. No live services or customer data were accessed; no push, merge, or deploy was performed. See [DASHBOARD-FIX-REPORT.md](RELEASE/DASHBOARD-FIX-REPORT.md).
+
+| Check | Status | Evidence |
+|---|---|---|
+| Fresh locked dependency install (current resume) | Fail / blocked | `python3 -m venv /tmp/m10-venv && /tmp/m10-venv/bin/python -m pip install -r requirements.lock` failed DNS resolution for PyPI (`/simple/asgiref/`). The earlier successful temporary venv was removed. |
+| Current Django startup | Not tested | Available `.local-deps` lacks `dj_database_url`; system Python has no Django. Current settings cannot load. |
+| PostgreSQL availability (current resume) | Not tested / unavailable | `pg_isready -p 55432` returned no response. Earlier temporary PostgreSQL 18.6 run results are preserved in the Mission 10 report. |
+| Full PostgreSQL suite / concurrency 20x | Pass (earlier Mission 10 run; not rerun on this resume) | Earlier locked venv + PostgreSQL 18.6: 89 tests, 0 skipped; dedicated concurrency test passed 20 consecutive runs. Final dashboard legacy-key action received focused test coverage after that full run. |
+| Migration round-trip | Pass (earlier Mission 10 run) | Fresh disposable DB migrated forward, backward to core 0001, and forward again. |
+| Django checks / migration drift | Pass (earlier Mission 10 run; not rerun now) | `check` and `makemigrations --check --dry-run` passed in the temporary locked environment. |
+| Frontend JavaScript syntax | Pass | Current `python3 scripts/check_frontend_js.py`: five inline script blocks checked. |
+| Whitespace | Pass | Current `git diff --check`. |
+| pip-audit / Ruff / full-history Gitleaks | Not tested in current run | Tools/results unavailable now; no current clean scan claim. |
+| Playwright and live test-data smoke | Not tested | Browser suite and test account unavailable; Render was not accessed. |
+
+### Newly identified open regression
+
+`core/services.py` uses `LOCATION_DUPLICATE_RADIUS_M` for candidate bounds but still has a literal 30 m final distance cutoff and 30 m advisory-lock grid. A regression case for a 100 m setting was briefly drafted, could not be executed because the current environment cannot import Django dependencies, and was not retained. This defect remains unfixed and is not counted as a passing test.
+
 ## Mission 5 run
 
 Date: 14 October 2026. Branch: `fix/audit-defects`. No production database, Render service, Supabase project, or GitHub repository settings were accessed. All locally generated credentials were dummy values.
