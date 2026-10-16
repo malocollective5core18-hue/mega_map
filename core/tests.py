@@ -498,6 +498,82 @@ class LocationSignalValidationTests(TestCase):
         self.assertFalse(hasattr(location, "gps_longitude"))
 
 
+class LegacyKeyResolutionTests(TestCase):
+    def setUp(self):
+        self.phone = "+255712345660"
+        self.businesses = [
+            CustomerBusiness.objects.create(
+                public_ref=f"BU-LEGACY-{index}", customer_name=f"Customer {index}",
+                business_name=f"Shop {index}", phone=self.phone,
+            )
+            for index in (1, 2)
+        ]
+        self.raw_key = "LEGACYRESOLVE1234"
+        self.code = ProviderCode.objects.create(
+            code_hash=hash_value(self.raw_key),
+            target_phone_hash=hash_value("provider-phone:" + self.phone),
+            target_phone_last4=self.phone[-4:],
+            legacy_phone_lookup=True,
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+
+    def admin_client(self):
+        user = get_user_model().objects.create_user(
+            username="legacy-resolver", password="safe-test-password"
+        )
+        user.groups.add(Group.objects.get_or_create(name="admin")[0])
+        client = APIClient()
+        client.force_login(user)
+        session = client.session
+        session["mfa_verified_user_id"] = str(user.pk)
+        session.save()
+        return client
+
+    def test_admin_can_resolve_ambiguous_legacy_key_and_audit_link(self):
+        denied_ambiguity = APIClient().post(
+            "/api/provider-codes/verify", {"phone": self.phone, "code": self.raw_key}, format="json"
+        )
+        self.assertEqual(denied_ambiguity.status_code, 409)
+        self.assertEqual(denied_ambiguity.data["error"]["code"], "ambiguous_legacy_key")
+        response = self.admin_client().post(
+            f"/api/admin/provider-codes/{self.code.pk}/link",
+            {"businessId": str(self.businesses[1].pk)}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.code.refresh_from_db()
+        self.assertEqual(self.code.business_id, self.businesses[1].pk)
+        self.assertFalse(self.code.legacy_phone_lookup)
+        event = AuditLog.objects.get(action="provider_code.legacy_linked")
+        self.assertEqual(event.metadata, {"business_id": str(self.businesses[1].pk)})
+        verified = APIClient().post(
+            "/api/provider-codes/verify", {"phone": self.phone, "code": self.raw_key}, format="json"
+        )
+        self.assertTrue(verified.data["valid"])
+        self.assertEqual(verified.data["existingCustomer"]["businessName"], "Shop 2")
+
+    def test_only_admin_can_link_and_phone_must_match(self):
+        provider = get_user_model().objects.create_user(username="legacy-provider")
+        provider.groups.add(Group.objects.get_or_create(name="service_provider")[0])
+        client = APIClient()
+        client.force_authenticate(provider)
+        response = client.post(
+            f"/api/admin/provider-codes/{self.code.pk}/link",
+            {"businessId": str(self.businesses[0].pk)}, format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data["error"]["code"], "admin_role_required")
+        mismatch = CustomerBusiness.objects.create(
+            public_ref="BU-LEGACY-DIFFERENT", customer_name="Other", business_name="Other",
+            phone="+255712345661",
+        )
+        response = self.admin_client().post(
+            f"/api/admin/provider-codes/{self.code.pk}/link",
+            {"businessId": str(mismatch.pk)}, format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["error"]["code"], "legacy_key_phone_mismatch")
+
+
 class CustomerDuplicateRecoveryTests(TestCase):
     def test_duplicate_keeps_verification_session_for_corrected_retry(self):
         phone = "+255712345650"
