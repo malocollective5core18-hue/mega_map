@@ -1552,3 +1552,158 @@ class StaffPermissionTests(TestCase):
         self.assertEqual(other_key.target_phone_hash, hash_value("provider-phone:" + other.phone))
         self.assertEqual(own_key.business_id, self.business.pk)
         self.assertEqual(other_key.business_id, other.pk)
+
+
+class DashboardCustomerDataFlowTests(TestCase):
+    def test_new_and_returning_customer_locations_appear_in_staff_list_and_detail(self):
+        phone = "+255755555551"
+        raw_code = "FLOW-TEST-CUSTOMER-KEY"
+        ProviderCode.objects.create(
+            code_hash=hash_value(raw_code),
+            target_phone_hash=hash_value("provider-phone:" + phone),
+            target_phone_last4=phone[-4:],
+            expires_at=timezone.now() + timedelta(hours=2),
+            reusable=True,
+        )
+        public_client = APIClient()
+        verification = public_client.post(
+            "/api/provider-codes/verify",
+            {"phone": phone, "code": raw_code},
+            format="json",
+        )
+        self.assertEqual(verification.status_code, 200)
+        self.assertTrue(verification.data["valid"])
+
+        def location_payload(latitude, business_name):
+            return {
+                "customerName": "Flow Test Customer",
+                "businessName": business_name,
+                "phone": phone,
+                "latitude": latitude,
+                "longitude": 39.289876,
+                "accuracyMeters": 20,
+                "locationSource": "gps",
+                "fixTimestamp": timezone.now().isoformat(),
+                "consent": True,
+                "confirmed": True,
+                "publicListing": False,
+            }
+
+        submitted = public_client.post(
+            "/api/location-submissions",
+            location_payload(-6.812345, "First Flow Shop"),
+            format="json",
+            HTTP_AUTHORIZATION="Bearer " + verification.data["verificationToken"],
+            HTTP_IDEMPOTENCY_KEY="flow-submit-idempotency-1",
+        )
+        self.assertEqual(submitted.status_code, 201, submitted.data)
+        business = CustomerBusiness.objects.get(public_ref=submitted.data["reference"])
+
+        group, _ = Group.objects.get_or_create(name="dispatcher")
+        staff_user = get_user_model().objects.create_user(
+            username="flow-dispatcher", password="safe-test-password"
+        )
+        staff_user.groups.add(group)
+        staff_client = APIClient()
+        staff_client.force_login(staff_user)
+        session = staff_client.session
+        session["mfa_verified_user_id"] = str(staff_user.pk)
+        session.save()
+
+        def assert_staff_location(expected_latitude, expected_business_name):
+            listing = staff_client.post("/api/admin/businesses", {}, format="json")
+            self.assertEqual(listing.status_code, 200, listing.data)
+            row = next(item for item in listing.data["items"] if item["id"] == str(business.pk))
+            self.assertEqual(row["businessName"], expected_business_name)
+            self.assertAlmostEqual(row["latitude"], expected_latitude, places=5)
+            detail = staff_client.get(f"/api/admin/businesses/{business.pk}")
+            self.assertEqual(detail.status_code, 200, detail.data)
+            self.assertAlmostEqual(detail.data["originalLatitude"], expected_latitude, places=5)
+
+        assert_staff_location(-6.812345, "First Flow Shop")
+
+        returning_verification = public_client.post(
+            "/api/provider-codes/verify",
+            {"phone": phone, "code": raw_code},
+            format="json",
+        )
+        self.assertEqual(returning_verification.status_code, 200)
+        self.assertEqual(
+            returning_verification.data["existingCustomer"]["reference"], business.public_ref
+        )
+        updated = public_client.put(
+            "/api/customer/profile",
+            location_payload(-6.814444, "Updated Flow Shop"),
+            format="json",
+            HTTP_AUTHORIZATION="Bearer " + returning_verification.data["verificationToken"],
+            HTTP_IDEMPOTENCY_KEY="flow-profile-idempotency-1",
+        )
+        self.assertEqual(updated.status_code, 200, updated.data)
+        self.assertEqual(updated.data["reference"], submitted.data["reference"])
+        self.assertEqual(CustomerBusiness.objects.count(), 1)
+        assert_staff_location(-6.814444, "Updated Flow Shop")
+
+    def test_staff_list_and_detail_distinguish_mfa_and_role_scope(self):
+        business = CustomerBusiness.objects.create(
+            public_ref="BU-MATRIX-FLOW",
+            customer_name="Matrix Customer",
+            business_name="Matrix Shop",
+            phone="+255755555552",
+        )
+        BusinessLocation.objects.create(
+            business=business, latitude=Decimal("-6.8"), longitude=Decimal("39.2")
+        )
+        Consent.objects.create(
+            business=business, privacy_notice_version="test", location_processing=True
+        )
+        role_groups = {
+            "admin": "admin",
+            "dispatcher": "dispatcher",
+            "provider": "service_provider",
+            "field_assigned": "field_team",
+            "field_unassigned": "field_team",
+        }
+        clients = {}
+        for label, group_name in role_groups.items():
+            user = get_user_model().objects.create_user(
+                username=f"matrix-{label}", password="safe-test-password"
+            )
+            user.groups.add(Group.objects.get_or_create(name=group_name)[0])
+            if label == "field_assigned":
+                business.assigned_to = user
+            client = APIClient()
+            client.force_login(user)
+            clients[label] = (client, user)
+        business.save(update_fields=["assigned_to"])
+        root = get_user_model().objects.create_superuser(
+            username="matrix-flow-root", email="matrix-flow-root@example.test", password="test"
+        )
+        clients["superuser"] = (APIClient(), root)
+        clients["superuser"][0].force_login(root)
+
+        for label, (client, user) in clients.items():
+            for path, method, data in (
+                ("/api/admin/businesses", "post", {}),
+                (f"/api/admin/businesses/{business.pk}", "get", None),
+            ):
+                without_mfa = getattr(client, method)(path, data, format="json") if data is not None else getattr(client, method)(path)
+                self.assertEqual(without_mfa.status_code, 403, label)
+                import json
+
+                self.assertEqual(json.loads(without_mfa.content)["error"]["code"], "mfa_required", label)
+
+            session = client.session
+            session["mfa_verified_user_id"] = str(user.pk)
+            session.save()
+            response = client.post("/api/admin/businesses", {}, format="json")
+            detail = client.get(f"/api/admin/businesses/{business.pk}")
+            if label in {"superuser", "admin", "dispatcher", "field_assigned"}:
+                self.assertEqual(response.status_code, 200, label)
+                self.assertEqual(detail.status_code, 200, label)
+            elif label == "field_unassigned":
+                self.assertEqual(response.status_code, 200, label)
+                self.assertEqual(response.data["items"], [])
+                self.assertEqual(detail.status_code, 404, label)
+            else:
+                self.assertEqual(response.status_code, 403, label)
+                self.assertEqual(detail.status_code, 403, label)
