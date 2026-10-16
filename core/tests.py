@@ -498,6 +498,53 @@ class LocationSignalValidationTests(TestCase):
         self.assertFalse(hasattr(location, "gps_longitude"))
 
 
+class DuplicateDetectionPolicyTests(TestCase):
+    def setUp(self):
+        self.business = CustomerBusiness.objects.create(
+            public_ref="BU-DUPLICATE-TEST",
+            customer_name="Test Person",
+            business_name="Same Shop",
+            phone="+255712345600",
+        )
+        BusinessLocation.objects.create(
+            business=self.business,
+            latitude=Decimal("-6.800000"),
+            longitude=Decimal("39.200000"),
+            source=BusinessLocation.Source.GPS,
+        )
+
+    def test_same_phone_and_business_within_radius_is_duplicate(self):
+        self.assertTrue(real_find_duplicate(
+            phone="+255712345600", business_name="Same Shop",
+            latitude=Decimal("-6.800010"), longitude=Decimal("39.200010")
+        ))
+
+    def test_different_phone_or_different_business_nearby_is_not_duplicate(self):
+        for phone, name in (("+255712345601", "Same Shop"), ("+255712345600", "Other Shop")):
+            with self.subTest(phone=phone, business=name):
+                self.assertFalse(real_find_duplicate(
+                    phone=phone, business_name=name,
+                    latitude=Decimal("-6.800010"), longitude=Decimal("39.200010")
+                ))
+
+    def test_rejected_neighbor_does_not_block_but_served_neighbor_does(self):
+        self.business.status = CustomerBusiness.Status.REJECTED
+        self.business.save(update_fields=["status"])
+        kwargs = dict(phone="+255712345600", business_name="Same Shop",
+                      latitude=Decimal("-6.800010"), longitude=Decimal("39.200010"))
+        self.assertFalse(real_find_duplicate(**kwargs))
+        self.business.status = CustomerBusiness.Status.SERVED
+        self.business.save(update_fields=["status"])
+        self.assertTrue(real_find_duplicate(**kwargs))
+
+    @override_settings(LOCATION_DUPLICATE_RADIUS_M=5)
+    def test_duplicate_radius_is_configurable(self):
+        self.assertFalse(real_find_duplicate(
+            phone="+255712345600", business_name="Same Shop",
+            latitude=Decimal("-6.800100"), longitude=Decimal("39.200100")
+        ))
+
+
 class AssignedFieldTeamJourneyTests(TestCase):
     def setUp(self):
         self.group, _ = Group.objects.get_or_create(name="field_team")
