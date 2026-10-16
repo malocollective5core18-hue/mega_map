@@ -544,7 +544,12 @@ class LegacyKeyResolutionTests(TestCase):
         )
         self.assertEqual(denied_ambiguity.status_code, 409)
         self.assertEqual(denied_ambiguity.data["error"]["code"], "ambiguous_legacy_key")
-        response = self.admin_client().post(
+        admin = self.admin_client()
+        listing = admin.post(
+            "/api/admin/provider-codes", {"action": "search"}, format="json"
+        )
+        self.assertTrue(next(item for item in listing.data["items"] if item["id"] == self.code.pk)["needsResolution"])
+        response = admin.post(
             f"/api/admin/provider-codes/{self.code.pk}/link",
             {"businessId": str(self.businesses[1].pk)}, format="json",
         )
@@ -575,12 +580,23 @@ class LegacyKeyResolutionTests(TestCase):
             public_ref="BU-LEGACY-DIFFERENT", customer_name="Other", business_name="Other",
             phone="+255712345661",
         )
-        response = self.admin_client().post(
+        admin = self.admin_client()
+        listing = admin.post(
+            "/api/admin/provider-codes", {"action": "search"}, format="json"
+        )
+        self.assertTrue(next(item for item in listing.data["items"] if item["id"] == self.code.pk)["needsResolution"])
+        response = admin.post(
             f"/api/admin/provider-codes/{self.code.pk}/link",
             {"businessId": str(mismatch.pk)}, format="json",
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data["error"]["code"], "legacy_key_phone_mismatch")
+
+    def test_admin_dashboard_offers_safe_legacy_resolution_action(self):
+        from pathlib import Path
+        html = (Path(__file__).resolve().parents[1] / "templates" / "staff" / "dashboard.html").read_text()
+        self.assertIn("Resolve to customer", html)
+        self.assertIn("/link", html)
 
 
 class CustomerDuplicateRecoveryTests(TestCase):
