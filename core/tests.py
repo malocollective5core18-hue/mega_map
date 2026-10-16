@@ -1477,6 +1477,24 @@ class StaffPermissionTests(TestCase):
             self.business.phone_hash, hash_value("provider-phone:" + self.business.phone)
         )
 
+    def test_staff_phone_edit_succeeds_with_postgresql_locking(self):
+        group, _ = Group.objects.get_or_create(name="dispatcher")
+        user = get_user_model().objects.create_user(
+            username="postgres-phone-editor", password="safe-test-password"
+        )
+        user.groups.add(group)
+        self.client.force_authenticate(user=user)
+
+        response = self.client.patch(
+            f"/api/admin/businesses/{self.business.pk}",
+            {"phone": "+255712345676"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.business.refresh_from_db()
+        self.assertEqual(self.business.phone, "+255712345676")
+
     def test_staff_phone_change_allows_shared_phone_and_only_rebinds_its_profile_key(self):
         other = CustomerBusiness.objects.create(
             public_ref="BU-OTHERPHONE",
