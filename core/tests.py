@@ -644,6 +644,38 @@ class CustomerDuplicateRecoveryTests(TestCase):
         self.assertIsNotNone(session.used_at)
 
 
+class StableRoleDenialCodeTests(TestCase):
+    def setUp(self):
+        self.business = CustomerBusiness.objects.create(
+            public_ref="BU-DENIAL-TEST", customer_name="Fake Customer",
+            business_name="Fake Shop", phone="+255712345677",
+        )
+
+    def make_staff(self, username, role):
+        user = get_user_model().objects.create_user(username=username, password="safe-test-password")
+        user.groups.add(Group.objects.get_or_create(name=role)[0])
+        client = APIClient()
+        client.force_login(user)
+        session = client.session
+        session["mfa_verified_user_id"] = str(user.pk)
+        session.save()
+        return client
+
+    def test_denials_return_codes_that_match_each_role_boundary(self):
+        dispatcher = self.make_staff("denial-dispatcher", "dispatcher")
+        field = self.make_staff("denial-field", "field_team")
+        responses = (
+            (dispatcher.post("/api/admin/staff-users", {}, format="json"), "superuser_required"),
+            (dispatcher.post("/api/admin/provider-codes", {"action": "search"}, format="json"), "provider_role_required"),
+            (field.get("/api/admin/assignable-staff"), "dispatcher_role_required"),
+            (field.post(f"/api/admin/businesses/{self.business.pk}/visits", {}, format="json"), "field_team_visit_forbidden"),
+        )
+        for response, expected in responses:
+            with self.subTest(expected=expected):
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.data["error"]["code"], expected)
+
+
 class ProviderCodeAwaitingCountTests(TestCase):
     def test_key_search_reports_unsubmitted_active_keys(self):
         admin = get_user_model().objects.create_superuser(
