@@ -599,7 +599,27 @@
     .drawer-head-actions { display: flex; gap: 6px; align-items: center }
     .drawer-head-actions .btn { min-height: 38px; padding-inline: 10px; white-space: nowrap }
     #toggleLocationDrawer { color: var(--g); background: #eef5f0 }
-    #locationDrawerContent { flex: 1 1 auto; min-height: 0; max-height: none; margin-top: 9px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scroll-padding-block: 12px 24px; transition: opacity .18s ease }
+    #locationDrawerContent { flex: 1 1 auto; min-height: 0; max-height: none; margin-top: 7px; overflow: hidden; transition: opacity .18s ease }
+    #locationDrawerContent .location-review-title,#locationDrawerContent .location-review-note { display:none }
+    #locationDrawerContent #locSt:empty { display:none }
+    #locationDrawerContent .customer-business-summary { margin:2px 0; font-size:9px; line-height:1.2 }
+    #locationDrawerContent .location-summary { display:grid; grid-template-columns:minmax(0,1fr); gap:2px; margin:3px 0 6px; padding:6px 8px; font-size:11px }
+    #locationDrawerContent .location-summary > span:last-child { display:none }
+    #locationDrawerContent .privacy-details { display:block; margin:2px 0; padding:3px 6px }
+    #locationDrawerContent .privacy-details summary { font-size:9px }
+    #locationDrawerContent .confirm-share,#locationDrawerContent .public-listing-choice { min-height:0; gap:4px; margin:2px 0; padding:2px 0; border:0; border-radius:0; font-size:10px; line-height:1.2 }
+    #locationDrawerContent .confirm-share input,#locationDrawerContent .public-listing-choice input { width:18px; height:18px; margin:0 5px 0 0; vertical-align:middle }
+    #locationDrawerContent .acts { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; margin-top:6px }
+    #locationDrawerContent .acts #send { min-height:38px; padding:7px 12px }
+    #locationDrawerContent .acts #stop2 { min-height:38px; padding:7px 12px }
+    #locationDrawerContent .optional-actions { margin-top:4px }
+    #locationDrawerContent .optional-actions summary { color:var(--mu); font-size:10px; cursor:pointer }
+    #locationDrawerContent .optional-actions .acts { display:flex; flex-wrap:wrap; margin-top:4px }
+    #locationDrawerContent .optional-search-toggle { min-height:30px; margin-top:3px; padding:4px 8px; font-size:10px }
+    #locationDrawerContent .submit-progress { margin:4px 0; font-size:10px }
+    #locationDrawerContent #locErr,#locationDrawerContent #subErr { margin:2px 0; font-size:10px }
+    #locationDrawerContent .place-search { padding-top:4px }
+    #locationDrawerContent.has-expanded-content { overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch }
     #sheet.map-drawer-collapsed #locationDrawerContent { flex: 0 0 0; max-height: 0; min-height: 0; margin-top: 0; overflow: hidden; opacity: 0; pointer-events: none }
     #sheet.map-drawer-collapsed { padding-bottom: max(10px, env(safe-area-inset-bottom)) }
 
@@ -954,11 +974,11 @@
         </div>
       </div>
       <div id="locationDrawerContent">
-        <h2>Choose your business location</h2>
-        <p class="note">Your map pin marks the place our team should visit. Drag it onto your business entrance, then review and confirm.</p>
+        <h2 class="location-review-title">Confirm your business location</h2>
+        <p class="note location-review-note">Check the pin, agree to share it with the service team, then send.</p>
         <p id="locSt" class="st" role="status"></p>
         <div id="locErr" class="err" role="alert"></div>
-        <div class="location-summary"><strong id="place">Waiting for a location</strong><span id="locationCoordinates" class="coordinates">Coordinates appear after you pin a location.</span><span>These are the coordinates that will be shared with our team. Drag the pin to your business entrance if needed.</span></div>
+        <div class="location-summary"><strong id="place">Waiting for a location</strong><span id="locationCoordinates" class="coordinates">Pin your business entrance on the map.</span><span>These are the coordinates that will be shared with our team. Drag the pin to your business entrance if needed.</span></div>
         <details class="privacy-details">
           <summary>How we use your location · Tunavyotumia eneo lako</summary>
           <p>Your device provides an estimated location. We send the pin you confirm, its reported accuracy and source, and the business details you entered to our company so staff can find and serve you. Reported accuracy is an estimate, not a guarantee. We use one location capture you start; we do not track you afterwards. Search suggestions are approximate. / Kifaa chako hutoa makadirio ya eneo. Tunatuma pini unayothibitisha, usahihi na chanzo kinachoripotiwa, pamoja na taarifa za biashara ulizoweka ili timu ikutafute na kukuhudumia. Usahihi unaoripotiwa ni makadirio, si uhakikisho. Tunatumia kipimo kimoja unachoanzisha; hatufuatilii eneo lako baadaye. Mapendekezo ya utafutaji ni makadirio.</p>
@@ -976,12 +996,13 @@
           <dt>Pin offset</dt><dd id="offsetDetail">–</dd>
           </dl>
         </details>
-        <p class="note"><b id="customerBusinessSummary"></b></p>
+        <p class="note customer-business-summary"><b id="customerBusinessSummary"></b></p>
         <label class="layerOption confirm-share" for="confirmShare"><input id="confirmShare" type="checkbox"> I confirm this pin marks my business and agree to share these details with the company so the team can find me. / Ninathibitisha pini hii ni ya biashara yangu na nakubali kutuma taarifa hizi kwa kampuni.</label>
-        <label class="layerOption" for="publicListing"><input id="publicListing" type="checkbox"> I agree that, after we have served my business, its business name and approximate area may appear on the public map.</label>
+        <label class="layerOption public-listing-choice" for="publicListing"><input id="publicListing" type="checkbox"> Optional: show my business name and approximate area on the public map after service.</label>
         <div id="subErr" class="err" role="alert"></div>
         <p id="submitProgress" class="submit-progress" role="status" hidden><span class="spin" aria-hidden="true"></span>Sending your location securely… / Inatuma eneo lako…</p>
-        <div class="acts"><button class="btn acc" id="send" disabled>Confirm and send</button><button class="btn ghost" id="retry">Pin my point again</button><button class="btn ghost" id="editDetails">Edit details</button><button class="btn ghost" id="stop2">Cancel</button></div>
+        <div class="acts"><button class="btn acc" id="send" disabled>Confirm and send</button><button class="btn ghost" id="stop2">Cancel</button></div>
+        <details class="optional-actions"><summary>More options</summary><div class="acts"><button class="btn ghost" id="retry">Pin my point again</button><button class="btn ghost" id="editDetails">Edit details</button></div></details>
         <button id="toggleLocationSearch" class="btn ghost optional-search-toggle" type="button" aria-expanded="false" aria-controls="locationSearchPanel">Search by area names (optional)</button>
         <div id="locationSearchPanel" class="place-search" hidden>
           <label for="locationSearch">Search an area name or landmark</label>
@@ -1298,7 +1319,7 @@
 
     function openLocationStep() {
       goStep("locate");
-      setLocationDrawerExpanded(false);
+      setLocationDrawerExpanded(true);
       setDrawerLocationStatus(st.pos
         ? "Saved pin is on the map. Tap Pin my point for a fresh device location, or drag the pin."
         : "The map is ready. Tap Pin my point to place your device location, or tap the map.");
@@ -1542,7 +1563,7 @@
       sh.classList.toggle("centered-form", s === "form");
       sh.classList.toggle("map-drawer", s === "locate");
       sh.setAttribute("aria-modal", s === "locate" ? "false" : "true");
-      if (s === "locate") setLocationDrawerExpanded(false);
+      if (s === "locate") setLocationDrawerExpanded(true);
       sh.classList.add("open"); sh.scrollTop = 0;
       const f = sh.querySelector(`.step[data-s="${s}"] input,.step[data-s="${s}"] button`); f && f.focus({ preventScroll: true });
       if (mapOk) setTimeout(() => map.invalidateSize(), 260);
@@ -1696,7 +1717,7 @@
           : `Device-reported accuracy is about ${accuracy} m. Check the pin at your business entrance.`;
         updateSelectedMapLocation(best.lat, best.lng, best.acc, 18, "GPS location", { source: "gps", fix: st.gpsFix, pinOffsetMeters: 0, pinMovedByHand: false });
         setDrawerLocationStatus(`Your device pin is on the map · about ${accuracy} m reported accuracy. Drag it to adjust.`);
-        setLocationDrawerExpanded(false);
+        setLocationDrawerExpanded(true);
       };
       st.gpsTimer = setTimeout(() => finish(true), GPS_ACQUIRE_MS);
       st.gpsWatch = navigator.geolocation.watchPosition(p => {
@@ -1822,11 +1843,16 @@
     $("toggleLocationSearch").onclick = () => {
       const panel = $("locationSearchPanel"), button = $("toggleLocationSearch");
       panel.hidden = !panel.hidden;
+      $("locationDrawerContent").classList.toggle("has-expanded-content", !panel.hidden);
       button.setAttribute("aria-expanded", String(!panel.hidden));
       button.textContent = panel.hidden ? "Search for an area instead (optional)" : "Hide area search";
       if (!panel.hidden) $("locationSearch").focus();
       else { hidePlaceResults(); clearTimeout(placeSearchTimer); ++placeSearchSequence; placeSearchController?.abort(); }
     };
+    [".privacy-details", ".optional-actions"].forEach(selector => $("locationDrawerContent").querySelectorAll(selector).forEach(details => details.addEventListener("toggle", () => {
+      const content = $("locationDrawerContent");
+      content.classList.toggle("has-expanded-content", !$("locationSearchPanel").hidden || Boolean(content.querySelector("details[open]")));
+    })));
     $("send").onclick = submitLocationRequest;
     $("editDetails").onclick = () => goStep("form");
     $("done").onclick = showCustomerLocationOnMap;
