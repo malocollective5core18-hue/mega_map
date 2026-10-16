@@ -665,7 +665,7 @@ def superuser_required(request):
             metadata={"reason": "superuser_required"},
         )
         return error(
-            "not_allowed",
+            "superuser_required",
             "Only the superuser can manage staff accounts.",
             status.HTTP_403_FORBIDDEN,
         )
@@ -821,7 +821,7 @@ def auth_mfa_enroll(request):
         return error("csrf_failed", "Refresh the sign-in page and try again.", 403)
     user = request.user
     if not is_staff_user(user) or current_staff_device(user, confirmed=True):
-        return error("not_allowed", "Staff MFA enrollment is unavailable.", 403)
+        return error("mfa_enrollment_unavailable", "Staff MFA enrollment is unavailable.", 403)
     device = current_staff_device(user, confirmed=False)
     if device is None:
         device = TOTPDevice.objects.create(user=user, name="Authenticator", confirmed=False)
@@ -847,7 +847,7 @@ def auth_mfa_confirm(request):
         return error("csrf_failed", "Refresh the sign-in page and try again.", 403)
     user = request.user
     if not is_staff_user(user) or current_staff_device(user, confirmed=True):
-        return error("not_allowed", "Staff MFA enrollment is unavailable.", 403)
+        return error("mfa_enrollment_unavailable", "Staff MFA enrollment is unavailable.", 403)
     device = current_staff_device(user, confirmed=False)
     token = request.data.get("code", "")
     if device is None or not isinstance(token, str) or mfa_locked(user):
@@ -878,7 +878,7 @@ def auth_mfa_regenerate_recovery(request):
     device = current_staff_device(user, confirmed=True)
     token = request.data.get("code", "")
     if not is_staff_user(user) or not is_mfa_verified(request) or device is None:
-        return error("not_allowed", "Verified staff sign-in is required.", 403)
+        return error("mfa_required", "Verified staff sign-in is required.", 403)
     if not isinstance(token, str) or not device.verify_token(token.strip()):
         record_mfa_failure(request, user, "recovery_regeneration_totp_invalid")
         return mfa_error()
@@ -905,7 +905,7 @@ def admin_mfa_reenroll(request, user_id):
         or not is_mfa_verified(request)
         or request.user.email.strip().lower() != owner_email
     ):
-        return error("not_allowed", "The configured MFA recovery owner must approve this action.", 403)
+        return error("mfa_recovery_owner_required", "The configured MFA recovery owner must approve this action.", 403)
     user = get_user_model().objects.filter(pk=user_id, is_active=True).first()
     if user is None or not is_staff_user(user):
         return error("not_found", "Staff account not found.", 404)
@@ -1382,7 +1382,7 @@ def admin_assignable_staff(request):
     if denied:
         return denied
     if has_role(request.user, "field_team") and not request.user.is_superuser:
-        return error("not_allowed", "Only dispatch staff can assign jobs.", 403)
+        return error("dispatcher_role_required", "Only dispatch staff can assign jobs.", 403)
     User = get_user_model()
     users = (
         User.objects.filter(is_active=True, groups__name__in=["dispatcher", "admin", "field_team"])
@@ -1529,7 +1529,7 @@ def admin_business_detail(request, business_id):
             metadata={"reason": "field_team_pin_only"},
         )
         return error(
-            "not_allowed", "Field team members may only correct an assigned location.", 403
+            "field_team_pin_only", "Field team members may only correct an assigned location.", 403
         )
     if "publicListing" in data and not has_role(request.user, "admin"):
         record_audit(
@@ -1541,7 +1541,7 @@ def admin_business_detail(request, business_id):
             metadata={"reason": "admin_role_required"},
         )
         return error(
-            "not_allowed",
+            "admin_role_required",
             "Only administrators can change public listing consent.",
             status.HTTP_403_FORBIDDEN,
         )
@@ -1802,7 +1802,7 @@ def admin_business_flag_cases(request, business_id):
             object_id=request.path,
             metadata={"reason": "customer_flag_role_required"},
         )
-        return error("not_allowed", "Only dispatchers and administrators can flag customers.", 403)
+        return error("customer_flag_role_required", "Only dispatchers and administrators can flag customers.", 403)
     business = CustomerBusiness.objects.filter(pk=business_id).first()
     if business is None:
         return error("not_found", "Business not found.", status.HTTP_404_NOT_FOUND)
@@ -1877,7 +1877,7 @@ def admin_business_visits(request, business_id):
     if denied:
         return denied
     if has_role(request.user, "field_team") and not request.user.is_superuser:
-        return error("not_allowed", "Field team members cannot edit visit records.", 403)
+        return error("field_team_visit_forbidden", "Field team members cannot edit visit records.", 403)
     business = CustomerBusiness.objects.filter(pk=business_id).first()
     if business is None:
         return error("not_found", "Business not found.", status.HTTP_404_NOT_FOUND)
@@ -1922,7 +1922,7 @@ def admin_business_arrival_check(request, business_id):
     if denied:
         return denied
     if not has_role(request.user, "field_team") or request.user.is_superuser:
-        return error("not_allowed", "This check is for field team members.", 403)
+        return error("field_team_required", "This check is for field team members.", 403)
     business = CustomerBusiness.objects.select_related("location").filter(pk=business_id).first()
     if business is None or business.assigned_to_id != request.user.pk:
         return error("not_found", "Assigned business not found.", 404)
@@ -2063,7 +2063,7 @@ def admin_provider_codes(request):
             metadata={"reason": "provider_role_required"},
         )
         return error(
-            "not_allowed",
+            "provider_role_required",
             "Provider-code access is limited to administrators and service providers.",
             status.HTTP_403_FORBIDDEN,
         )
@@ -2082,7 +2082,7 @@ def admin_provider_codes(request):
             metadata={"reason": "code_issue_role_required"},
         )
         return error(
-            "not_allowed",
+            "code_issue_role_required",
             "Only the superuser and service providers can generate customer keys.",
             status.HTTP_403_FORBIDDEN,
         )
@@ -2253,7 +2253,7 @@ def admin_provider_codes(request):
                 business_id=business_id, created_by=request.user
             ).exists()
         if not may_link_business:
-            return error("not_allowed", "You cannot link a key to this business profile.", 403)
+            return error("provider_business_link_forbidden", "You cannot link a key to this business profile.", 403)
         business = CustomerBusiness.objects.filter(pk=business_id).first()
         if business is None or business.phone != phone:
             return error("invalid_business", "Choose an existing business with this phone number.", 400)
@@ -2362,7 +2362,7 @@ def admin_revoke_code(request, code_id):
             metadata={"reason": "code_revoke_role_required"},
         )
         return error(
-            "not_allowed",
+            "provider_revoke_role_required",
             "Only an administrator or service provider can revoke a customer key.",
             status.HTTP_403_FORBIDDEN,
         )
@@ -2379,7 +2379,7 @@ def admin_revoke_code(request, code_id):
             metadata={"reason": "provider_not_owner"},
         )
         return error(
-            "not_allowed",
+            "provider_key_owner_required",
             "Service providers can revoke only keys they created.",
             status.HTTP_403_FORBIDDEN,
         )
