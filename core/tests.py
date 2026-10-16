@@ -2059,6 +2059,34 @@ class DashboardListQueryCountTests(TestCase):
         self.assertLessEqual(len(queries), 12, f"The list ran {len(queries)} queries")
 
 
+class DiagnoseDashboardDataPrivacyTests(TestCase):
+    def test_diagnostic_masks_database_and_customer_values_and_reports_render_sha(self):
+        from io import StringIO
+        from unittest.mock import patch
+        from django.core.management import call_command
+
+        phone = "+255712345688"
+        business = CustomerBusiness.objects.create(
+            public_ref="BU-DIAG-PRIVACY", customer_name="Fake Diagnostic Name",
+            business_name="Fake Diagnostic Shop", phone=phone,
+        )
+        BusinessLocation.objects.create(
+            business=business, latitude=Decimal("-6.811234"), longitude=Decimal("39.277654"),
+            source=BusinessLocation.Source.MANUAL,
+        )
+        output = StringIO()
+        with patch.dict("os.environ", {"RENDER_GIT_COMMIT": "a1b2c3d4e5"}):
+            call_command("diagnose_dashboard_data", stdout=output)
+        result = output.getvalue()
+        self.assertIn('"deployed_commit": "a1b2c3d4e5"', result)
+        self.assertIn('"host_fingerprint": "sha256:', result)
+        for private in (
+            phone, "Fake Diagnostic Name", "Fake Diagnostic Shop", "-6.811234", "39.277654"
+        ):
+            self.assertNotIn(private, result)
+        self.assertNotIn("DATABASE_URL", result)
+
+
 class DashboardErrorStateTests(TestCase):
     def test_dashboard_explains_staff_roles_errors_and_csrf_failure(self):
         from pathlib import Path
