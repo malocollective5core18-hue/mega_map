@@ -1748,7 +1748,12 @@
         if (r.status === 410) { clearSavedDraft(); throw new Error("Your session expired. Please start again with your code."); }
         if (r.status === 409) {
           const problem = await r.json().catch(() => ({}));
-          if (problem?.error?.code === "duplicate") { st.sent = true; clearSavedDraft(); showSuccessScreen(null, true, "already_on_file"); return; }
+          if (problem?.error?.code === "duplicate") {
+            st.idempotencyKey = null;
+            saveWorkflowDraft();
+            throw new Error("This location is already on file. Nothing new was submitted. Your verification is still active; review the business details or pin and try again.");
+          }
+          if (problem?.error?.code === "idempotency_conflict") throw new Error("This request was already used for a different submission. Your location was not changed. Refresh the verification and try again.");
           throw new Error("This request could not be matched to this sign-in session. Keep this screen open and contact the company before retrying.");
         }
         if (r.status === 422) {
@@ -1762,7 +1767,9 @@
           }
           throw new Error(problem?.error?.message || "The server rejected some details. Go back and check them.");
         }
-        if (!r.ok) throw new Error("Server error. Your location was not saved. Please retry.");
+        if (r.status === 429) throw new Error("Too many location attempts. Wait a little, then try again.");
+        if (r.status >= 500) throw new Error("The service is temporarily unavailable. Your location was not confirmed as saved; retry in a moment.");
+        if (!r.ok) throw new Error("The server rejected this request. Your location was not saved. Review the details and try again.");
         let j; try { j = await r.json() } catch { throw new Error("Unexpected server reply. Please retry.") }
         if (st.customerExisting ? j.updated !== true : j.accepted !== true) throw new Error("The server did not accept the request. Please retry.");
         st.sent = true; clearSavedDraft(); showSuccessScreen(typeof j.reference === "string" ? j.reference : null, false, j.status || (st.customerExisting ? st.customerStatus : "submitted"));
