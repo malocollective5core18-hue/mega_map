@@ -43,6 +43,7 @@ from .models import (
     ServiceVisit,
     StaffMFAFailure,
     StaffMFARecoveryCode,
+    ServiceTeam,
     VerificationSession,
 )
 from .mfa import (
@@ -599,7 +600,7 @@ def has_role(user, role):
     return user.is_authenticated and (user.is_superuser or user.groups.filter(name=role).exists())
 
 
-def staff_required(request, *, admin=False):
+def staff_required(request, *, admin=False, allow_team_provider=False):
     role = "admin" if admin else None
     if not request.user.is_authenticated:
         record_audit(
@@ -627,10 +628,16 @@ def staff_required(request, *, admin=False):
             "This action is limited to administrators.",
             status.HTTP_403_FORBIDDEN,
         )
+    is_team_provider = (
+        allow_team_provider
+        and request.user.groups.filter(name="service_provider").exists()
+        and ServiceTeam.objects.filter(is_active=True, members=request.user).exists()
+    )
     if not role and not (
         has_role(request.user, "dispatcher")
         or has_role(request.user, "admin")
         or has_role(request.user, "field_team")
+        or is_team_provider
     ):
         record_audit(
             request=request,
@@ -923,7 +930,7 @@ def admin_mfa_reenroll(request, user_id):
     return Response({"mfaEnrollmentRequired": True})
 
 
-@api_view(["GET", "POST"])
+@api_view(["GET", "POST", "PATCH"])
 @permission_classes([AuditIsAuthenticated])
 def admin_staff_users(request):
     denied = superuser_required(request)
@@ -931,6 +938,26 @@ def admin_staff_users(request):
         return denied
 
     User = get_user_model()
+    if request.method == "PATCH":
+        user_id = request.data.get("userId")
+        active = request.data.get("active")
+        if not isinstance(active, bool):
+            return error("invalid_staff_status", "Choose an account status.", 400)
+        user = User.objects.filter(pk=user_id).first()
+        if user is None or not is_staff_user(user):
+            return error("not_found", "Staff account not found.", 404)
+        if user.pk == request.user.pk and not active:
+            return error("cannot_disable_self", "You cannot disable your own signed-in account.", 400)
+        user.is_active = active
+        user.save(update_fields=["is_active"])
+        record_audit(
+            request=request,
+            actor=request.user,
+            action="staff.user_activated" if active else "staff.user_deactivated",
+            object_type="User",
+            object_id=user.pk,
+        )
+        return Response({"id": user.pk, "active": user.is_active})
     if request.method == "GET":
         users = (
             User.objects.filter(groups__name__in=["admin", "service_provider", "field_team"])
@@ -1032,6 +1059,139 @@ def admin_staff_users(request):
         {"id": user.pk, "username": user.get_username(), "email": user.email, "role": role},
         status=status.HTTP_201_CREATED,
     )
+
+
+@api_view(["GET", "POST", "PATCH"])
+@permission_classes([AuditIsAuthenticated])
+def admin_service_teams(request):
+    denied = staff_required(request)
+    if denied:
+        return denied
+    if request.method == "POST":
+        denied = superuser_required(request)
+        if denied:
+            return denied
+    if request.method == "PATCH":
+        denied = superuser_required(request)
+        if denied:
+            return denied
+        try:
+            team = ServiceTeam.objects.get(pk=request.data.get("teamId"))
+        except (ServiceTeam.DoesNotExist, TypeError, ValueError):
+            return error("not_found", "Service team not found.", 404)
+        if "active" in request.data:
+            active = request.data.get("active")
+            if not isinstance(active, bool):
+                return error("invalid_team_status", "Choose an active or disabled status.", 400)
+            team.is_active = active
+            team.save(update_fields=["is_active", "updated_at"])
+            record_audit(
+                request=request,
+                actor=request.user,
+                action="staff.service_team_activated" if active else "staff.service_team_deactivated",
+                object_type="ServiceTeam",
+                object_id=team.pk,
+            )
+            return Response({"id": team.pk, "active": team.is_active})
+        name = request.data.get("name", "")
+        leader_id = request.data.get("leaderId")
+        member_ids = request.data.get("memberIds", [])
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 120 or not isinstance(member_ids, list) or len(member_ids) > 50:
+            return error("invalid_team", "Enter a team name and select valid staff members.", 400)
+        User = get_user_model()
+        try:
+            leader_pk = int(leader_id)
+            member_pks = {int(value) for value in member_ids} | {leader_pk}
+            leader = User.objects.filter(pk=leader_pk, is_active=True, groups__name="service_provider").distinct().first()
+            members = list(User.objects.filter(pk__in=member_pks, is_active=True, groups__name__in=["admin", "dispatcher", "field_team", "service_provider"]).distinct())
+        except (TypeError, ValueError):
+            leader, members, member_pks = None, [], set()
+        if leader is None or len(members) != len(member_pks):
+            return error("invalid_team_members", "Choose an active service provider as leader and active existing staff accounts as members.", 400)
+        team.name = name.strip()
+        team.leader = leader
+        try:
+            with transaction.atomic():
+                team.save(update_fields=["name", "leader", "updated_at"])
+                team.members.set(members)
+                record_audit(request=request, actor=request.user, action="staff.service_team_updated", object_type="ServiceTeam", object_id=team.pk, metadata={"member_count": len(members), "leader_id": leader.pk})
+        except IntegrityError:
+            return error("team_name_exists", "A team with that name already exists.", 409)
+        return Response({"id": team.pk, "name": team.name, "leaderId": leader.pk, "active": team.is_active})
+
+    def serialize(team):
+        return {
+            "id": team.pk,
+            "name": team.name,
+            "active": team.is_active,
+            "leaderId": team.leader_id,
+            "leader": team.leader.get_username(),
+            "members": [
+                {"id": user.pk, "username": user.get_username(), "role": _staff_role(user)}
+                for user in team.members.filter(is_active=True).order_by("username")
+            ],
+            "customerCount": team.assigned_businesses.count(),
+        }
+
+    if request.method == "GET":
+        teams = ServiceTeam.objects.select_related("leader").prefetch_related("members")
+        if not request.user.is_superuser and not has_role(request.user, "admin"):
+            teams = teams.filter(members=request.user)
+        return Response({"items": [serialize(team) for team in teams.distinct()]})
+
+    name = request.data.get("name", "")
+    leader_id = request.data.get("leaderId")
+    member_ids = request.data.get("memberIds", [])
+    if (
+        not isinstance(name, str)
+        or not name.strip()
+        or len(name.strip()) > 120
+        or not isinstance(member_ids, list)
+        or len(member_ids) > 50
+    ):
+        return error("invalid_team", "Enter a team name and select valid staff members.", 400)
+    User = get_user_model()
+    try:
+        leader_pk = int(leader_id)
+        member_pks = {int(value) for value in member_ids} | {leader_pk}
+        leader = User.objects.filter(pk=leader_pk, is_active=True, groups__name="service_provider").distinct().first()
+        members = list(
+            User.objects.filter(
+                pk__in=member_pks,
+                is_active=True,
+                groups__name__in=["admin", "dispatcher", "field_team", "service_provider"],
+            ).distinct()
+        )
+    except (TypeError, ValueError):
+        leader, members = None, []
+    if leader is None or len(members) != len(member_pks):
+        return error(
+            "invalid_team_members",
+            "Choose an active service provider as leader and active existing staff accounts as members.",
+            400,
+        )
+    try:
+        with transaction.atomic():
+            team = ServiceTeam.objects.create(name=name.strip(), leader=leader)
+            team.members.set(members)
+            record_audit(
+                request=request,
+                actor=request.user,
+                action="staff.service_team_created",
+                object_type="ServiceTeam",
+                object_id=team.pk,
+                metadata={"member_count": len(members), "leader_id": leader.pk},
+            )
+    except IntegrityError:
+        return error("team_name_exists", "A team with that name already exists.", 409)
+    return Response(serialize(team), status=status.HTTP_201_CREATED)
+
+
+def _staff_role(user):
+    for role in ("service_provider", "field_team", "dispatcher", "admin"):
+        if user.groups.filter(name=role).exists():
+            return role
+    return "staff"
 
 
 @api_view(["POST"])
@@ -1223,6 +1383,8 @@ def serialize_staff_business(
         "createdAt": business.created_at.isoformat(),
         "updatedAt": business.updated_at.isoformat(),
         "assignedTo": business.assigned_to_id,
+        "assignedTeamId": business.assigned_team_id,
+        "assignedTeam": business.assigned_team.name if business.assigned_team_id else None,
     }
     if detail:
         result.update(
@@ -1262,12 +1424,17 @@ def serialize_staff_business(
 @api_view(["POST"])
 @permission_classes([AuditIsAuthenticated])
 def admin_businesses(request):
-    denied = staff_required(request)
+    denied = staff_required(request, allow_team_provider=True)
     if denied:
         return denied
-    businesses = CustomerBusiness.objects.select_related("location", "consent", "assigned_to")
+    businesses = CustomerBusiness.objects.select_related("location", "consent", "assigned_to", "assigned_team")
     if has_role(request.user, "field_team") and not request.user.is_superuser:
-        businesses = businesses.filter(assigned_to=request.user)
+        businesses = businesses.filter(
+            Q(assigned_to=request.user)
+            | Q(assigned_team__members=request.user, assigned_team__is_active=True)
+        ).distinct()
+    elif request.user.groups.filter(name="service_provider").exists() and not request.user.is_superuser:
+        businesses = businesses.filter(assigned_team__members=request.user, assigned_team__is_active=True)
     status_filter = str(request.data.get("status", "")).strip()
     if status_filter:
         if status_filter not in CustomerBusiness.Status.values:
@@ -1344,7 +1511,11 @@ def admin_businesses(request):
         ).order_by("-created_at"):
             legacy_codes_by_hash.setdefault(code.target_phone_hash, []).append(code)
     awaiting_submission = None
-    if not has_role(request.user, "field_team") or request.user.is_superuser:
+    if (
+        request.user.is_superuser
+        or has_role(request.user, "admin")
+        or has_role(request.user, "dispatcher")
+    ):
         awaiting_submission = (
             ProviderCode.objects.filter(
                 business__isnull=True,
@@ -1405,7 +1576,11 @@ def admin_assignable_staff(request):
                     ),
                 }
                 for user in users
-            ]
+            ],
+            "teams": [
+                {"id": team.pk, "name": team.name, "leader": team.leader.get_username()}
+                for team in ServiceTeam.objects.filter(is_active=True).select_related("leader")
+            ],
         }
     )
 
@@ -1413,7 +1588,7 @@ def admin_assignable_staff(request):
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([AuditIsAuthenticated])
 def admin_business_detail(request, business_id):
-    denied = staff_required(request)
+    denied = staff_required(request, allow_team_provider=True)
     if denied:
         return denied
     if request.method == "DELETE":
@@ -1421,15 +1596,20 @@ def admin_business_detail(request, business_id):
         if denied:
             return denied
     business = (
-        CustomerBusiness.objects.select_related("location", "consent", "assigned_to")
+        CustomerBusiness.objects.select_related("location", "consent", "assigned_to", "assigned_team")
         .filter(pk=business_id)
         .first()
     )
     if business is None:
         return error("not_found", "Business not found.", status.HTTP_404_NOT_FOUND)
     is_field_team = has_role(request.user, "field_team") and not request.user.is_superuser
-    if is_field_team and business.assigned_to_id != request.user.pk:
+    is_team_provider = request.user.groups.filter(name="service_provider").exists() and not request.user.is_superuser
+    assigned_to_user = business.assigned_to_id == request.user.pk
+    assigned_to_team = bool(business.assigned_team_id and business.assigned_team.is_active and business.assigned_team.members.filter(pk=request.user.pk).exists())
+    if (is_field_team or is_team_provider) and not (assigned_to_user or assigned_to_team):
         return error("not_found", "Assigned business not found.", status.HTTP_404_NOT_FOUND)
+    if is_team_provider and request.method != "GET":
+        return error("team_provider_read_only", "Team service providers can view assigned customer locations; dispatch changes remain with dispatch staff.", 403)
     original_phone = business.phone
     if request.method == "GET":
         record_audit(
@@ -1511,6 +1691,7 @@ def admin_business_detail(request, business_id):
         "status",
         "notes",
         "assignee",
+        "teamId",
         "publicListing",
         "correctedLatitude",
         "correctedLongitude",
@@ -1637,23 +1818,39 @@ def admin_business_detail(request, business_id):
         from django.contrib.auth import get_user_model
 
         user_model = get_user_model()
-        try:
-            assignee = (
-                user_model.objects.filter(
-                    pk=data["assignee"],
-                    is_active=True,
-                    groups__name__in=["dispatcher", "admin", "field_team"],
+        if not data["assignee"]:
+            assignee = None
+        else:
+            try:
+                assignee = (
+                    user_model.objects.filter(
+                        pk=data["assignee"],
+                        is_active=True,
+                        groups__name__in=["dispatcher", "admin", "field_team"],
+                    )
+                    .distinct()
+                    .first()
                 )
-                .distinct()
-                .first()
-            )
-            if assignee is None:
-                raise user_model.DoesNotExist
-        except user_model.DoesNotExist, TypeError, ValueError:
-            return error(
-                "invalid_assignee", "Choose an active staff account.", status.HTTP_400_BAD_REQUEST
-            )
+                if assignee is None:
+                    raise user_model.DoesNotExist
+            except (user_model.DoesNotExist, TypeError, ValueError):
+                return error(
+                    "invalid_assignee", "Choose an active staff account.", status.HTTP_400_BAD_REQUEST
+                )
         business.assigned_to = assignee
+        business.assigned_team = None
+    if "teamId" in data:
+        try:
+            team = ServiceTeam.objects.filter(pk=data["teamId"], is_active=True).first() if data["teamId"] else None
+        except (TypeError, ValueError):
+            team = None
+        if data["teamId"] and team is None:
+            return error("invalid_team", "Choose an active service team.", status.HTTP_400_BAD_REQUEST)
+        business.assigned_team = team
+        if team is not None:
+            business.assigned_to = None
+        elif "assignee" not in data:
+            business.assigned_to = None
     with transaction.atomic():
         if business.phone != original_phone:
             locked_business = (

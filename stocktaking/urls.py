@@ -5,6 +5,7 @@ from django.conf import settings
 from django.urls import include, path
 
 from core.mfa import is_mfa_verified
+from core.models import ServiceTeam
 
 
 def healthz(_request):
@@ -72,6 +73,9 @@ def staff_home(request):
                 "is_superuser": request.user.is_superuser,
                 "is_provider": not request.user.is_superuser
                 and request.user.groups.filter(name="service_provider").exists(),
+                "is_team_provider": not request.user.is_superuser
+                and request.user.groups.filter(name="service_provider").exists()
+                and ServiceTeam.objects.filter(is_active=True, members=request.user).exists(),
                 "is_field_team": not request.user.is_superuser
                 and request.user.groups.filter(name="field_team").exists(),
                 "is_mfa_recovery_owner": bool(

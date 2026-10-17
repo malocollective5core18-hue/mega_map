@@ -98,6 +98,13 @@ class CustomerBusiness(models.Model):
         on_delete=models.SET_NULL,
         related_name="assigned_businesses",
     )
+    assigned_team = models.ForeignKey(
+        "ServiceTeam",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_businesses",
+    )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -117,6 +124,31 @@ class CustomerBusiness(models.Model):
 
     def __str__(self):
         return f"{self.public_ref} — {self.business_name}"
+
+
+class ServiceTeam(models.Model):
+    """A dispatch group composed of existing staff accounts."""
+
+    name = models.CharField(max_length=120, unique=True)
+    leader = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="led_service_teams",
+    )
+    members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="service_teams",
+        blank=True,
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
 
 
 class BusinessLocation(models.Model):

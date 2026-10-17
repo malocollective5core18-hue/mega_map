@@ -28,6 +28,7 @@ urlpatterns = [
         name="admin-staff-mfa-reenroll",
     ),
     path("admin/staff-users", views.admin_staff_users, name="admin-staff-users"),
+    path("admin/service-teams", views.admin_service_teams, name="admin-service-teams"),
     path("admin/businesses", views.admin_businesses, name="admin-businesses"),
     path("admin/assignable-staff", views.admin_assignable_staff, name="admin-assignable-staff"),
     path(

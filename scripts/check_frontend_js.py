@@ -14,7 +14,7 @@ FILES = (
     ROOT / "templates/staff/dashboard.html",
 )
 TEMPLATE_BOOL = re.compile(
-    r'\{\{\s*(is_admin|is_provider|is_superuser|is_field_team|is_dispatcher|is_mfa_recovery_owner)'
+    r'\{\{\s*(is_admin|is_provider|is_team_provider|is_superuser|is_field_team|is_dispatcher|is_mfa_recovery_owner)'
     r'\|yesno:"true,false"\s*\}\}'
 )
 INLINE_SCRIPT = re.compile(r"(?is)<script(?:\s[^>]*)?>(.*?)</script\s*>")
